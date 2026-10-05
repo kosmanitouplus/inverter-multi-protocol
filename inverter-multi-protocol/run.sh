@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bashio
 set -eu
 
 OPTIONS="/data/options.json"
@@ -9,12 +9,12 @@ get_option() {
 }
 
 INVERTER_NAME="$(get_option inverter_name INVERTER_1)"
-PROTOCOL="$(get_option protocol pi30)"
+PROTOCOL="$(get_option protocol PI30)"
 PORT="$(get_option port /dev/ttyUSB0)"
 POLL_INTERVAL="$(get_option poll_interval 5)"
 
 echo "--------------------------------------------------"
-echo " Inverter Multi-Protocol 0.1.0"
+echo " Inverter Multi-Protocol 0.1.1"
 echo "--------------------------------------------------"
 echo "Name       : ${INVERTER_NAME}"
 echo "Protocol   : ${PROTOCOL}"
