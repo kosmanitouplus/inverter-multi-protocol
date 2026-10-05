@@ -5,6 +5,8 @@ from inverter_runtime.protocols import PIProtocol, PROTOCOLS, ResponseError, Uns
 
 
 def valid(raw):
+    if isinstance(raw, str):
+        raw = raw.encode('ascii')
     body = raw[:-3]
     return body+bytes(crcPI(body))+b'\r'
 
