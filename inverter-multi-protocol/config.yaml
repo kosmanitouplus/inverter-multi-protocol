@@ -1,6 +1,6 @@
 name: "Inverter Multi-Protocol"
 description: "Multi-protocol solar inverter monitoring for Home Assistant via RS232, RS485, USB and MQTT"
-version: "0.1.3"
+version: "0.1.4"
 slug: "inverter_multi_protocol"
 
 arch:
