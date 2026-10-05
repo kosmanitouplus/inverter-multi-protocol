@@ -1,0 +1,45 @@
+name: Validate runtime and native images
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r inverter-multi-protocol/requirements.txt pytest==8.3.5 PyYAML==6.0.3
+      - run: python -m pytest tests -q
+      - name: Validate add-on metadata
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          root = Path('inverter-multi-protocol')
+          config = yaml.safe_load((root/'config.yaml').read_text())
+          builds = yaml.safe_load((root/'build.yaml').read_text())
+          assert set(config['arch']) == set(builds['build_from']) == {'aarch64', 'amd64'}
+          assert config['version'] == '0.2.0'
+          assert 'mqtt:want' in config['services']
+          PY
+  images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native image
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.22 -t inverter-test inverter-multi-protocol
+      - name: Import runtime and exercise codec on native architecture
+        run: |
+          docker run --rm --entrypoint /opt/inverter-multi-protocol/bin/python3 inverter-test -c "from inverter_runtime.protocols import PIProtocol, PROTOCOLS; from inverter_runtime.service import Worker; [PIProtocol(p).read_commands() for p in PROTOCOLS]; print('runtime OK')"
