@@ -1,4 +1,4 @@
-# Réglages par onduleur — version 0.2.1
+# Réglages par onduleur — version 0.2.2
 
 Cette version ajoute les courants PI30 et laisse le technicien définir les contrôles et limites pour chaque appareil. Le protocole pilote la trame, son format et les champs de relecture ; chaque marque/variante peut nécessiter son propre mapping. Un protocole autodétecté reste en lecture seule : sélectionner son protocole exact avant d’activer les commandes.
 
@@ -65,8 +65,8 @@ Masquer une carte du tableau de bord ou ne pas publier la découverte des contr�
 
 ## Validation d’une modification
 
-Les commandes périmées, retenues, dupliquées ou hors limites sont refusées. Réglages et capacités doivent être frais et disponibles. L’écriture n’est envoyée qu’une fois ; `confirmed` exige un ACK et une relecture correspondant à la valeur demandée. `unconfirmed` indique un résultat inconnu : pas de réessai automatique. La version 0.2.1 est validée par simulation ; valider le format et la relecture sur chaque modèle avant déploiement chez un client.
+Les commandes périmées, retenues, dupliquées ou hors limites sont refusées. Réglages et capacités doivent être frais et disponibles. L’écriture n’est envoyée qu’une fois ; `confirmed` exige un ACK et une relecture correspondant à la valeur demandée. `unconfirmed` indique un résultat inconnu : pas de réessai automatique. La version 0.2.2 est validée par simulation ; valider le format et la relecture sur chaque modèle avant déploiement chez un client.
 
 ## Mise à jour depuis GitHub
 
-Ajouter à la boutique le dépôt `https://github.com/kosmanitouplus/inverter-multi-protocol#robustness/protocol-detection-mqtt-controls`, rechercher les mises à jour, puis mettre à jour l’application de ce dépôt en 0.2.1. Une copie installée sous `local_...` ne reçoit pas cette mise à jour GitHub : installer l’application du dépôt et recopier ses options une fois, en arrêtant l’ancienne avant de démarrer la nouvelle sur le même port.
+Ajouter à la boutique le dépôt `https://github.com/kosmanitouplus/inverter-multi-protocol#robustness/protocol-detection-mqtt-controls`, rechercher les mises à jour, puis mettre à jour l’application de ce dépôt en 0.2.2. Une copie installée sous `local_...` ne reçoit pas cette mise à jour GitHub : installer l’application du dépôt et recopier ses options une fois, en arrêtant l’ancienne avant de démarrer la nouvelle sur le même port.

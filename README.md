@@ -1,4 +1,6 @@
-# Inverter Multi-Protocol — 0.2.1, branche de validation
+# Multi Onduleur Robuste
+
+Version actuelle : **0.2.2**.
 
 Surveillance et réglages d’onduleurs dans MQTT/Home Assistant. Plusieurs appareils sont regroupés séparément, avec une disponibilité propre à chacun et à chaque requête. Cette version nécessite encore une validation sur le matériel avant fusion et mise à jour de l’installation active.
 
@@ -98,3 +100,9 @@ Voir [audit et validation matérielle](docs/VALIDATION_FR.md). Sources de format
 ## Installations clients et accès technicien
 
 Voir [configuration technicien](docs/TECHNICIEN_FR.md) pour activer des contrôles par appareil et réserver les commandes aux techniciens. `expose_controls: false` supprime leur découverte Home Assistant, mais conserve leur API MQTT pour le technicien. Cette option masque les contrôles ; elle ne constitue pas une autorisation par utilisateur. Le broker doit appliquer des ACL empêchant les comptes clients et la connexion MQTT Home Assistant de publier sur `inverter/+/set/+`, et permettre cette publication uniquement au compte technicien. Le compte de l’add-on doit pouvoir s’abonner à ces commandes et publier les états/résultats. Ne pas donner aux clients les droits d’administration permettant de changer ces règles.
+
+## Nom permanent et mises à jour Home Assistant
+
+Le nom affiché est **Multi Onduleur Robuste**. Le slug `inverter_multi_protocol`, le dépôt GitHub, les identifiants des onduleurs et les topics MQTT restent stables. Le nom affiché ne définit pas l’identité d’installation : celle-ci dépend du dépôt configuré et du slug. Les prochaines publications augmentent le numéro de version sans ajouter de suffixe TEST ni créer une nouvelle application.
+
+Installer une fois l’application du dépôt `https://github.com/kosmanitouplus/inverter-multi-protocol#robustness/protocol-detection-mqtt-controls`, puis activer **Mise à jour automatique** dans son onglet Informations. Garder cette même adresse de dépôt, branche incluse, pour conserver l’identité de l’installation. Home Assistant recherche les versions publiées et peut les installer automatiquement selon son calendrier et ses règles de mises à jour. Ce réglage est une préférence Supervisor sur le Raspberry ; un commit GitHub ne l’active pas à distance. Les copies `local_...` TEST ne sont pas rattachées à ce dépôt et nécessitent une migration initiale unique.

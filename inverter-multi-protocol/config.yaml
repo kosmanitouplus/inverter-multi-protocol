@@ -1,6 +1,6 @@
-name: "Inverter Multi-Protocol"
+name: "Multi Onduleur Robuste"
 description: "Multi-inverter MQTT monitoring, protocol detection and verified settings"
-version: "0.2.1"
+version: "0.2.2"
 slug: "inverter_multi_protocol"
 url: https://github.com/kosmanitouplus/inverter-multi-protocol
 arch:

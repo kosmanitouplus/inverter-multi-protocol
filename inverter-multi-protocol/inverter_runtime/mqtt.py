@@ -153,7 +153,7 @@ class Broker:
     def device(worker):
         return {'identifiers': [f'mpp_{worker.name}'], 'name': worker.name,
                 'manufacturer': worker.config.get('manufacturer', 'Inverter Multi-Protocol'),
-                'model': worker.protocol.name, 'sw_version': '0.2.1'}
+                'model': worker.protocol.name, 'sw_version': '0.2.2'}
 
     @staticmethod
     def avail(worker, command):
