@@ -1,5 +1,12 @@
 # Changements
 
+## 0.2.3
+
+- Rechargement des options sans redémarrage manuel, nouvelle identité MQTT lors d’un changement de nom et retrait des anciennes découvertes gérées.
+- Noms d’onduleurs avec espaces et accents acceptés ; noms affichés séparés des IDs MQTT.
+- Identifiants existants préservés, champ id facultatif pour conserver l’historique lors d’un changement de libellé.
+- Configuration invalide : service vivant, message explicite et reprise après correction, sans boucle watchdog.
+
 ## 0.2.2
 
 - Nom affiché permanent : Multi Onduleur Robuste.

@@ -28,10 +28,16 @@ class Broker:
         self.discovery = {}
         self.manifest_path = Path(manifest_path) if manifest_path else None
         self.persisted_topics = set()
+        self.discovery_owners = {}
         if self.manifest_path and self.manifest_path.exists():
             try:
-                self.persisted_topics = set(json.loads(self.manifest_path.read_text()))
-            except (OSError, ValueError, TypeError):
+                saved = json.loads(self.manifest_path.read_text())
+                if isinstance(saved, list):
+                    self.persisted_topics = set(saved)  # Migrate the initial manifest format.
+                else:
+                    self.persisted_topics = set(saved['topics'])
+                    self.discovery_owners = dict(saved.get('owners', {}))
+            except (OSError, ValueError, TypeError, KeyError):
                 LOG.warning('Discovery manifest unreadable; continuing')
         self.workers = {}
         self.generation = 0
@@ -110,11 +116,15 @@ class Broker:
     def cleanup_discovery(self, client):
         for topic in list(self.persisted_topics):
             keep = False
-            for worker in self.workers.values():
+            owner = self.discovery_owners.get(topic)
+            for worker in sorted(self.workers.values(), key=lambda w: len(w.name), reverse=True):
+                if owner is not None and owner != f'mpp_{worker.name}':
+                    continue
                 stem = f'mpp_{worker.name}_'
                 entity = topic.split('/')[-2] if len(topic.split('/')) == 4 else ''
                 if entity.startswith(stem):
                     keep = True
+                    self.discovery_owners[topic] = f'mpp_{worker.name}'
                     if entity.startswith(stem+'setting_'):
                         setting = entity[len(stem+'setting_'):]
                         allowed = worker.config['controls']
@@ -126,6 +136,7 @@ class Broker:
                 client.publish(topic, '', qos=1, retain=True)
                 self.discovery.pop(topic, None)
                 self.persisted_topics.discard(topic)
+                self.discovery_owners.pop(topic, None)
         self.save_manifest()
 
     def save_manifest(self):
@@ -133,7 +144,7 @@ class Broker:
             try:
                 self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
                 temporary = self.manifest_path.with_suffix('.tmp')
-                temporary.write_text(json.dumps(sorted(self.persisted_topics)))
+                temporary.write_text(json.dumps({'version': 2, 'topics': sorted(self.persisted_topics), 'owners': self.discovery_owners}))
                 temporary.replace(self.manifest_path)
             except OSError:
                 LOG.warning('Cannot persist discovery manifest')
@@ -145,15 +156,16 @@ class Broker:
             self.discovery[topic] = payload
             if topic not in self.persisted_topics:
                 self.persisted_topics.add(topic)
+                self.discovery_owners[topic] = definition['device']['identifiers'][0]
                 self.save_manifest()
         if previous != payload:
             self.publish(topic, payload, retain=True, qos=1)
 
     @staticmethod
     def device(worker):
-        return {'identifiers': [f'mpp_{worker.name}'], 'name': worker.name,
+        return {'identifiers': [f'mpp_{worker.name}'], 'name': worker.config.get('display_name', worker.name),
                 'manufacturer': worker.config.get('manufacturer', 'Inverter Multi-Protocol'),
-                'model': worker.protocol.name, 'sw_version': '0.2.2'}
+                'model': worker.protocol.name, 'sw_version': '0.2.3'}
 
     @staticmethod
     def avail(worker, command):
@@ -173,7 +185,7 @@ class Broker:
             component = 'binary_sensor' if binary else 'sensor'
             unique = f'mpp_{worker.name}_{entity}'
             state_topic = f'homeassistant/{component}/{unique}/state'
-            definition = {'name': f'{worker.name} {field}', 'unique_id': unique,
+            definition = {'name': f"{worker.config.get('display_name', worker.name)} {field}", 'unique_id': unique,
                           'state_topic': state_topic, 'device': self.device(worker),
                           'availability': self.avail(worker, command), 'availability_mode': 'all',
                           'expire_after': max(30, int(worker.config['query_interval']*3),

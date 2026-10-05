@@ -1,6 +1,6 @@
 # Multi Onduleur Robuste
 
-Version actuelle : **0.2.2**.
+Version actuelle : **0.2.3**.
 
 Surveillance et réglages d’onduleurs dans MQTT/Home Assistant. Plusieurs appareils sont regroupés séparément, avec une disponibilité propre à chacun et à chaque requête. Cette version nécessite encore une validation sur le matériel avant fusion et mise à jour de l’installation active.
 
@@ -106,3 +106,11 @@ Voir [configuration technicien](docs/TECHNICIEN_FR.md) pour activer des contrôl
 Le nom affiché est **Multi Onduleur Robuste**. Le slug `inverter_multi_protocol`, le dépôt GitHub, les identifiants des onduleurs et les topics MQTT restent stables. Le nom affiché ne définit pas l’identité d’installation : celle-ci dépend du dépôt configuré et du slug. Les prochaines publications augmentent le numéro de version sans ajouter de suffixe TEST ni créer une nouvelle application.
 
 Installer une fois l’application du dépôt `https://github.com/kosmanitouplus/inverter-multi-protocol#robustness/protocol-detection-mqtt-controls`, puis activer **Mise à jour automatique** dans son onglet Informations. Garder cette même adresse de dépôt, branche incluse, pour conserver l’identité de l’installation. Home Assistant recherche les versions publiées et peut les installer automatiquement selon son calendrier et ses règles de mises à jour. Ce réglage est une préférence Supervisor sur le Raspberry ; un commit GitHub ne l’active pas à distance. Les copies `local_...` TEST ne sont pas rattachées à ce dépôt et nécessitent une migration initiale unique.
+
+## Noms lisibles et erreurs de configuration
+
+Les noms d’onduleur acceptent les espaces et accents. Leur identifiant MQTT est dérivé de manière déterministe (`Onduleur Étage 1` devient `Onduleur_Etage_1`). Tous les anciens noms valides tels que `INVERTER_1` gardent exactement leurs IDs/topics. Le nom affiché et l’identifiant peuvent être dissociés : une entrée `inverters` accepte `id: INVERTER_1` avec `name: Onduleur Étage 1` pour changer le libellé sans changer l’historique. En configuration simple, utiliser `inverter_id` pour fixer cet identifiant. Les IDs doivent rester uniques ; une collision nécessite un id explicite.
+
+Une configuration invalide est journalisée sans traceback ni sortie du service. Le processus attend une correction et relit les options toutes les deux secondes ; il ne communique avec aucun onduleur tant que la configuration globale n’est pas valide. SIGTERM reste pris en charge pendant cette attente. L’application conserve toujours le nom **Multi Onduleur Robuste**.
+
+Changer `inverter_name` (configuration simple) ou `name` dans une entrée `inverters` (configuration multiple), puis enregistrer. Le service détecte la modification sous deux secondes, termine ses échanges en cours, puis relance les lecteurs avec la nouvelle configuration. Sans id explicite, un nouveau nom donnant un nouvel identifiant crée un nouvel appareil MQTT ; les anciennes déclarations de découverte gérées par l’application sont retirées à la reconnexion MQTT. Avec un id explicite inchangé, seul le libellé du même appareil change, et son historique est conservé. Une différence de nom qui donne le même identifiant normalisé (par exemple un espace remplacé par un underscore) change uniquement le libellé. Les modifications hors application et les anciennes découvertes non enregistrées dans son manifeste ne sont pas supprimées automatiquement.

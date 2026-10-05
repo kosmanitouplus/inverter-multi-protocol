@@ -197,3 +197,45 @@ def test_shared_lock_wait_is_bounded(tmp_path):
         with pytest.raises(TimeoutError,match='busy'):t.exchange(b'QPI\r')
         assert time.monotonic()-start < .5
     finally:t.lock.release()
+
+
+def test_invalid_configuration_waits_then_resumes_without_exit(tmp_path,monkeypatch):
+    from inverter_runtime.service import wait_for_valid_config
+    import inverter_runtime.service as service
+    stop=Mock();stop.is_set.return_value=False
+    monkeypatch.setattr(service,'load_config',Mock(side_effect=[ValueError('Bad config'),({'inverters':[]},[])]))
+    assert wait_for_valid_config('options','profiles',stop)==({'inverters':[]},[])
+    stop.wait.assert_called_once_with(2)
+
+
+def test_invalid_configuration_wait_is_interruptible(monkeypatch):
+    from inverter_runtime.service import wait_for_valid_config
+    import inverter_runtime.service as service
+    stop=threading.Event()
+    def invalid(*args):
+        stop.set();raise ValueError('Bad config')
+    monkeypatch.setattr(service,'load_config',invalid)
+    assert wait_for_valid_config('options','profiles',stop) is None
+
+
+def test_process_lives_with_invalid_config_then_hot_rename(tmp_path):
+    options=tmp_path/'options.json'
+    options.write_text(json.dumps({'inverter_name':''}))
+    addon=Path(__file__).resolve().parents[1]/'inverter-multi-protocol'
+    proc=subprocess.Popen([sys.executable,'-m','inverter_runtime','--options',str(options)],cwd=addon,
+                          stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    try:
+        time.sleep(.5);assert proc.poll() is None
+        values={'inverter_name':'Onduleur Étage','port':str(tmp_path/'missing'),'mqtt_host':'127.0.0.1','mqtt_port':1}
+        options.write_text(json.dumps(values));time.sleep(2.5)
+        assert proc.poll() is None
+        values['inverter_name']='Onduleur Atelier'
+        options.write_text(json.dumps(values));time.sleep(2.5)
+        assert proc.poll() is None
+        proc.terminate();output=proc.communicate(timeout=5)[0].decode()
+        assert proc.returncode==0 and 'Invalid configuration' in output
+        assert 'Configuration corrected' in output and 'Configuration changed' in output
+        assert 'Onduleur_Etage' in output and 'Onduleur_Atelier' in output
+        assert 'Traceback' not in output
+    finally:
+        if proc.poll() is None:proc.kill();proc.wait()

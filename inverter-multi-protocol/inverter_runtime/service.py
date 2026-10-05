@@ -269,43 +269,77 @@ class Worker:
         self.broker.publish(self.availability, 'offline', retain=True, qos=1)
 
 
+def wait_for_valid_config(options_path, profiles_dir, stop):
+    last_error = None
+    while not stop.is_set():
+        try:
+            loaded = load_config(options_path, profiles_dir)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
+            message = str(exc)
+            if message != last_error:
+                LOG.error('Invalid configuration: %s; service remains alive, correct options to resume', message)
+                last_error = message
+            stop.wait(2)
+            continue
+        if last_error is not None:
+            LOG.info('Configuration corrected; starting inverter monitoring')
+        return loaded
+    return None
+
+
 def main(options_path='/data/options.json', profiles_dir='/config/inverter-profiles'):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', force=True)
     for name in ('mppsolar', 'protocols', 'AbstractProtocol', 'pi30'):
         logging.getLogger(name).setLevel(logging.WARNING)
-    options, entries = load_config(options_path, profiles_dir)
-    host = os.environ.get('MQTT_HOST') or options.get('mqtt_host', 'localhost')
-    port = os.environ.get('MQTT_PORT') or options.get('mqtt_port', 1883)
-    user = os.environ.get('MQTT_USER') or options.get('mqtt_user', '')
-    password = os.environ.get('MQTT_PASSWORD') or options.get('mqtt_password', '')
-    broker = Broker(host, port, user, password)
     stop = threading.Event()
     def terminate(*args):
         stop.set()
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)
-    workers = [Worker(entry, broker) for entry in entries]
-    threads = [threading.Thread(target=w.run, args=(stop,), name=w.name) for w in workers]
-    broker.start()
-    try:
-        for thread in threads:
-            thread.start()
-        while not stop.wait(.5):
-            for index, thread in enumerate(threads):
-                if not thread.is_alive():
-                    worker = workers[index]
-                    LOG.error('%s worker ended unexpectedly; restarting independently', worker.name)
-                    worker.online = worker.confirmed = False
-                    worker.protocol = None
-                    worker.next_retry = time.monotonic()+5
-                    broker.publish(worker.availability, 'offline', retain=True, qos=1)
-                    threads[index] = threading.Thread(target=worker.run, args=(stop,), name=worker.name)
-                    threads[index].start()
-    finally:
-        stop.set()
-        # Every exchange is bounded; shutdown may wait for the current exchange.
-        for thread in threads:
-            if thread.ident is not None:
-                thread.join()
-        broker.stop()
-    LOG.info('Inverter Multi-Protocol stopped cleanly')
+    while not stop.is_set():
+        loaded = wait_for_valid_config(options_path, profiles_dir, stop)
+        if loaded is None:
+            break
+        options, entries = loaded
+        host = os.environ.get('MQTT_HOST') or options.get('mqtt_host', 'localhost')
+        port = os.environ.get('MQTT_PORT') or options.get('mqtt_port', 1883)
+        user = os.environ.get('MQTT_USER') or options.get('mqtt_user', '')
+        password = os.environ.get('MQTT_PASSWORD') or options.get('mqtt_password', '')
+        broker = Broker(host, port, user, password)
+        runtime_stop = threading.Event()
+        workers = [Worker(entry, broker) for entry in entries]
+        threads = [threading.Thread(target=w.run, args=(runtime_stop,), name=w.name) for w in workers]
+        next_check = time.monotonic()+2
+        broker.start()
+        try:
+            for thread in threads:
+                thread.start()
+            while not stop.wait(.5):
+                if time.monotonic() >= next_check:
+                    next_check = time.monotonic()+2
+                    try:
+                        current = json.loads(Path(options_path).read_text())
+                    except (OSError, ValueError):
+                        current = None
+                    if current != options:
+                        LOG.info('Configuration changed; reloading inverter identities and MQTT discovery')
+                        break
+                for index, thread in enumerate(threads):
+                    if not thread.is_alive():
+                        worker = workers[index]
+                        LOG.error('%s worker ended unexpectedly; restarting independently', worker.name)
+                        worker.online = worker.confirmed = False
+                        worker.protocol = None
+                        worker.next_retry = time.monotonic()+5
+                        broker.publish(worker.availability, 'offline', retain=True, qos=1)
+                        threads[index] = threading.Thread(target=worker.run, args=(runtime_stop,), name=worker.name)
+                        threads[index].start()
+        finally:
+            runtime_stop.set()
+            # Join before creating replacement workers: never have two readers
+            # or a queued setter from the old configuration on the same port.
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join()
+            broker.stop()
+    LOG.info('Multi Onduleur Robuste stopped cleanly')

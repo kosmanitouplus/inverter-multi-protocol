@@ -2,10 +2,32 @@ import json
 import math
 import os
 import re
+import hashlib
+import unicodedata
 from pathlib import Path
 from .protocols import PROTOCOLS
 from .controls import SELECTS, NUMBERS, CURRENTS
 from .modbus import validate_profile
+
+
+def inverter_identity(display_name, explicit_id=None):
+    if not isinstance(display_name, str) or not display_name.strip() or len(display_name) > 128:
+        raise ValueError('Inverter name must be non-empty text (maximum 128 characters)')
+    if any(unicodedata.category(c).startswith('C') for c in display_name):
+        raise ValueError('Inverter name cannot contain control characters')
+    if explicit_id is not None:
+        if not isinstance(explicit_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', explicit_id):
+            raise ValueError('Inverter id must contain 1–64 letters, digits, _ or -')
+        return explicit_id
+    if re.fullmatch(r'[A-Za-z0-9_-]{1,64}', display_name):
+        return display_name  # Preserve every previously valid MQTT identifier.
+    text = unicodedata.normalize('NFKD', display_name).encode('ascii', 'ignore').decode()
+    identifier = re.sub(r'[^A-Za-z0-9_-]+', '_', text.strip()).strip('_')
+    if not identifier:
+        identifier = 'inverter_'+hashlib.sha256(display_name.encode()).hexdigest()[:12]
+    if len(identifier) > 64:
+        identifier = identifier[:51]+'_'+hashlib.sha256(display_name.encode()).hexdigest()[:12]
+    return identifier
 
 
 def load_config(path, profiles_dir='/config/inverter-profiles'):
@@ -18,15 +40,20 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
     if not entries:
         # Preserve the installed single-inverter tag, port, protocol and history.
         entries = [{'name': options.get('inverter_name', 'INVERTER_1'),
+                    'id': options.get('inverter_id'),
                     'port': options.get('port', '/dev/ttyUSB0'),
                     'protocol': options.get('protocol', 'PI30'),
                     'poll_interval': options.get('poll_interval', 5)}]
     result, names, ports = [], set(), {}
     for original in entries:
+        if not isinstance(original, dict):
+            raise ValueError('Each inverter must be a configuration object')
         entry = dict(original)
-        name = entry['name']
-        if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', name) or name in names:
-            raise ValueError('Unique inverter names must contain letters, digits, _ or -')
+        entry['display_name'] = entry.get('name')
+        name = inverter_identity(entry['display_name'], entry.get('id'))
+        if name in names:
+            raise ValueError('Duplicate inverter identifier; assign a distinct id to each inverter')
+        entry['name'] = name
         names.add(name)
         port = entry['port']
         if not isinstance(port, str) or not port or ('://' in port and not port.startswith('tcp://')):

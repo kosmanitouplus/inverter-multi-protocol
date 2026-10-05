@@ -62,7 +62,7 @@ def test_disabled_controls_removed_on_next_start(tmp_path):
     client, b, w = setup(tmp_path)
     b.on_connect(client, None, {}, 0)
     client.publish.assert_any_call(topic, '', qos=1, retain=True)
-    assert json.loads(manifest.read_text()) == []
+    assert json.loads(manifest.read_text())['topics'] == []
 
 
 def test_queries_do_not_overwrite_primary_entity(tmp_path):
@@ -173,3 +173,24 @@ def test_current_control_discovery_and_readback_state(tmp_path):
     assert '40 A' in d['options'] and len(d['availability'])==4
     b.readings(w,'QPIRI',{'Max Charging Current':(40,'A')})
     client.publish.assert_any_call('inverter/INVERTER_1/settings/max_charging_current','40 A',retain=False,qos=0)
+
+
+import pytest
+
+
+@pytest.mark.parametrize('new_name', ['Atelier', 'INVERTER'])
+def test_rename_removes_old_discovery_and_groups_new_device(tmp_path,new_name):
+    client,old,worker=setup(tmp_path)
+    old.connected.set();old.readings(worker,'QPIGS',{'AC Output Voltage':(230,'V')})
+    old_topic='homeassistant/sensor/mpp_INVERTER_1_ac_output_voltage/config'
+    replacement=Broker('localhost',client=client,manifest_path=tmp_path/'manifest.json')
+    new=Worker(config(name=new_name,display_name='Onduleur Atelier'),replacement)
+    new.protocol=PIProtocol('PI30');new.commands=['QPIGS']
+    new.query_topics={'QPIGS':'inverter/Atelier/availability/qpigs'}
+    replacement.on_connect(client,None,{},0)
+    client.publish.assert_any_call(old_topic,'',qos=1,retain=True)
+    replacement.readings(new,'QPIGS',{'AC Output Voltage':(231,'V')})
+    definition=json.loads(replacement.discovery[f'homeassistant/sensor/mpp_{new_name}_ac_output_voltage/config'])
+    assert definition['device']['name']=='Onduleur Atelier'
+    assert definition['device']['identifiers']==[f'mpp_{new_name}']
+    assert old_topic not in replacement.persisted_topics

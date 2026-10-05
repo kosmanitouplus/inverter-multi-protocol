@@ -1,6 +1,6 @@
 name: "Multi Onduleur Robuste"
 description: "Multi-inverter MQTT monitoring, protocol detection and verified settings"
-version: "0.2.2"
+version: "0.2.3"
 slug: "inverter_multi_protocol"
 url: https://github.com/kosmanitouplus/inverter-multi-protocol
 arch:
@@ -24,6 +24,7 @@ options:
   inverters: []
 schema:
   inverter_name: str
+  inverter_id: str?
   protocol: str
   port: str
   poll_interval: int(1,3600)
@@ -33,6 +34,7 @@ schema:
   mqtt_password: password?
   inverters:
     - name: str
+      id: str?
       port: str
       protocol: str?
       baud: int(1200,115200)?
