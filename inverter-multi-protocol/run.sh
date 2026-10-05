@@ -14,7 +14,7 @@ PORT="$(get_option port /dev/ttyUSB0)"
 POLL_INTERVAL="$(get_option poll_interval 5)"
 
 echo "--------------------------------------------------"
-echo " Inverter Multi-Protocol 0.1.1"
+echo " Inverter Multi-Protocol 0.1.2"
 echo "--------------------------------------------------"
 echo "Name       : ${INVERTER_NAME}"
 echo "Protocol   : ${PROTOCOL}"
