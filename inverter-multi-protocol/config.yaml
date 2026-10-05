@@ -1,0 +1,33 @@
+name: "Inverter Multi-Protocol"
+description: "Multi-protocol solar inverter monitoring for Home Assistant via RS232, RS485, USB and MQTT"
+version: "0.1.0"
+slug: "inverter_multi_protocol"
+
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+
+startup: application
+boot: auto
+init: false
+
+uart: true
+
+services:
+  - mqtt:need
+
+
+options:
+  inverter_name: "INVERTER_1"
+  protocol: "pi30"
+  port: "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_FHBSb2A4517-if00-port0"
+  poll_interval: 5
+
+schema:
+  inverter_name: str
+  protocol: str
+  port: str
+  poll_interval: int
