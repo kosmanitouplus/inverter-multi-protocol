@@ -1,4 +1,4 @@
-# Inverter Multi-Protocol — 0.2.0, branche de validation
+# Inverter Multi-Protocol — 0.2.1, branche de validation
 
 Surveillance et réglages d’onduleurs dans MQTT/Home Assistant. Plusieurs appareils sont regroupés séparément, avec une disponibilité propre à chacun et à chaque requête. Cette version nécessite encore une validation sur le matériel avant fusion et mise à jour de l’installation active.
 
@@ -57,8 +57,10 @@ Lecture seule par défaut. `allow_writes: true` exige un protocole explicite, l�
 - `charger_source_priority`
 - `input_voltage_range`
 - `battery_type` (activation explicite)
+- `max_charging_current` : courant maximal de charge total, choix annoncés par QMCHGCR
+- `max_ac_charging_current` : courant maximal de charge secteur, choix annoncés par QMUCHGCR
 
-Les limites de tension ne sont jamais devinées. Les contrôles numériques suivants nécessitent leurs limites autorisées par le fabricant : `battery_bulk_charge_voltage`, `battery_float_charge_voltage`, `battery_recharge_voltage`, `battery_redischarge_voltage`, `battery_cutoff_voltage`. Exemple de structure **à remplacer par les limites exactes du modèle** :
+Les limites de tension sont configurées par le technicien **pour chaque onduleur**, sans valeur imposée pour une installation 12/24/48 V. Les limites de tension ne sont jamais devinées. Les contrôles numériques suivants nécessitent leurs limites autorisées par le fabricant : `battery_bulk_charge_voltage`, `battery_float_charge_voltage`, `battery_recharge_voltage`, `battery_redischarge_voltage`, `battery_cutoff_voltage`. Exemple de structure **à remplacer par les limites exactes du modèle** :
 
 ```yaml
 allow_writes: true
@@ -66,6 +68,8 @@ controls: "output_source_priority,input_voltage_range"
 # Pour une tension autorisée, ajouter le nom du contrôle à controls puis :
 # write_limits: '{"battery_float_charge_voltage":{"min":MINIMUM,"max":MAXIMUM,"step":0.1}}'
 ```
+
+Pour les courants PI30, le format par défaut MCHGC/MUCHGC utilise un numéro de machine et deux chiffres de courant (0–99 A). Le format étendu de courant total `charge_current_command: MNCHGC` permet trois chiffres lorsque le manuel du modèle le confirme. La liste effectivement offerte reste limitée aux choix annoncés par l’appareil, éventuellement filtrés par `write_limits`. En parallèle, renseigner `command_unit: 0` à `9` selon l’adresse confirmée ; aucune adresse n’est déduite. En mode « single machine output » confirmé, le numéro 0 est utilisé. Le nombre d’appareils/configurations n’est pas une limite de courant.
 
 Chaque contrôle apparaît sous le même appareil Home Assistant. Sa commande va à `inverter/<nom>/set/<contrôle>`, son état à `inverter/<nom>/settings/<contrôle>`. `command_result` donne `confirmed`, `rejected` ou `unconfirmed`.
 
@@ -90,3 +94,7 @@ Absence/retrait du câble : processus vivant, appareil offline, retries 2–60 s
 Images natives aarch64 et amd64, base Alpine Home Assistant 3.22, dépendances Python épinglées, environnement virtuel sans chemin contenant une version mineure Python. armhf/armv7/i386 sont retirés. Pas de modification ni de déploiement automatique sur le Raspberry.
 
 Voir [audit et validation matérielle](docs/VALIDATION_FR.md). Sources de formats : [mpp-solar](https://github.com/jblance/mpp-solar), [spécification Modbus](https://www.modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf), [découverte MQTT Home Assistant](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
+
+## Installations clients et accès technicien
+
+Voir [configuration technicien](docs/TECHNICIEN_FR.md) pour activer des contrôles par appareil et réserver les commandes aux techniciens. `expose_controls: false` supprime leur découverte Home Assistant, mais conserve leur API MQTT pour le technicien. Cette option masque les contrôles ; elle ne constitue pas une autorisation par utilisateur. Le broker doit appliquer des ACL empêchant les comptes clients et la connexion MQTT Home Assistant de publier sur `inverter/+/set/+`, et permettre cette publication uniquement au compte technicien. Le compte de l’add-on doit pouvoir s’abonner à ces commandes et publier les états/résultats. Ne pas donner aux clients les droits d’administration permettant de changer ces règles.

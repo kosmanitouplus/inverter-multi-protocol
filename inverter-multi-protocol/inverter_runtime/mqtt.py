@@ -120,7 +120,7 @@ class Broker:
                         allowed = worker.config['controls']
                         if worker.config['protocol'].startswith('MODBUS'):
                             allowed = [key(v['name']) for v in worker.config['profile_data']['sensors'] if v.get('write')]
-                        keep = worker.config['allow_writes'] and setting in allowed
+                        keep = worker.config['allow_writes'] and worker.config.get('expose_controls', True) and setting in allowed
                     break
             if not keep:
                 client.publish(topic, '', qos=1, retain=True)
@@ -153,7 +153,7 @@ class Broker:
     def device(worker):
         return {'identifiers': [f'mpp_{worker.name}'], 'name': worker.name,
                 'manufacturer': worker.config.get('manufacturer', 'Inverter Multi-Protocol'),
-                'model': worker.protocol.name, 'sw_version': '0.2.0'}
+                'model': worker.protocol.name, 'sw_version': '0.2.1'}
 
     @staticmethod
     def avail(worker, command):
@@ -193,9 +193,11 @@ class Broker:
         self.publish(f'inverter/{worker.name}/state', worker.snapshot)
         for control in worker.controls.values():
             if control.query == command and control.field in readings:
-                self.publish(f'inverter/{worker.name}/settings/{control.key}', readings[control.field][0])
+                self.publish(f'inverter/{worker.name}/settings/{control.key}', control.state_value(readings[control.field][0]))
 
     def discover_controls(self, worker):
+        if not worker.config.get('expose_controls', True):
+            return
         for control in worker.controls.values():
             component = 'select' if control.options is not None else 'number'
             definition = {'name': control.key.replace('_', ' '),
@@ -205,6 +207,8 @@ class Broker:
                           'command_topic': f'inverter/{worker.name}/set/{control.key}',
                           'availability': self.avail(worker, control.query), 'availability_mode': 'all',
                           'optimistic': False, 'retain': False, 'qos': 0}
+            if control.capability_query:
+                definition['availability'].append({'topic': worker.query_topics[control.capability_query]})
             if control.options is not None:
                 definition['options'] = list(control.options)
             else:

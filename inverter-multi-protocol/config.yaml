@@ -1,6 +1,6 @@
 name: "Inverter Multi-Protocol"
 description: "Multi-inverter MQTT monitoring, protocol detection and verified settings"
-version: "0.2.0"
+version: "0.2.1"
 slug: "inverter_multi_protocol"
 url: https://github.com/kosmanitouplus/inverter-multi-protocol
 arch:
@@ -42,9 +42,12 @@ schema:
       parity: list(N|E|O)?
       stopbits: int(1,2)?
       unit_id: int(1,247)?
+      command_unit: int(0,9)?
       profile: str?
       manufacturer: str?
       allow_writes: bool?
+      expose_controls: bool?
+      charge_current_command: list(MCHGC|MNCHGC)?
       controls: str?
       write_limits: str?
       commands: str?

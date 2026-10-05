@@ -32,6 +32,7 @@ class Worker:
         self.availability = f'inverter/{self.name}/availability'
         self.confirmed, self.online = False, False
         self.last_good, self.failures, self.next_retry = 0, 0, 0
+        self.capabilities = {}
         self.setting_queue = queue.Queue(maxsize=32)
         self.last_setting = 0
         self.generation = broker.generation
@@ -55,6 +56,7 @@ class Worker:
         return self.protocol.decode(self.transport.exchange(frame), command)
 
     def prepare(self):
+        self.capabilities = {}
         selected = self.config['protocol']
         if selected.startswith('MODBUS'):
             self.protocol = ModbusProtocol(selected, self.config['profile_data'], self.config['unit_id'])
@@ -88,6 +90,9 @@ class Worker:
                 self.protocol.definition(command)
             if command not in self.commands:
                 self.commands.append(command)
+        if self.config['allow_writes']:
+            preferred = [c for c in (self.protocol.primary, self.protocol.rating, 'QMCHGCR', 'QMUCHGCR') if c in self.commands]
+            self.commands = list(dict.fromkeys(preferred+self.commands))
         self.query_due = {command: 0 for command in self.commands}
         self.query_topics.update({c: f'inverter/{self.name}/availability/{self.query_key(c)}' for c in self.commands})
         self.controls = {}
@@ -126,6 +131,11 @@ class Worker:
         if not control:
             self.result(control_key, 'rejected', 'Setting is no longer available')
             return
+        required = [control.query] + ([control.capability_query] if control.capability_query else [])
+        freshness = max(self.config['query_interval']*3, self.config['poll_interval']*len(self.commands)*3, 30)
+        if any(self.query_errors.get(c, 0) or time.time()-self.snapshot.get(c, {}).get('timestamp', 0) > freshness for c in required):
+            self.result(control_key, 'rejected', 'Settings or capability readback is unavailable/stale')
+            return
         # Validate everything before reaching the wire. No raw MQTT command API.
         try:
             if isinstance(self.protocol, ModbusProtocol):
@@ -153,6 +163,8 @@ class Worker:
                 actual = self.read(control.query)
                 if not control.matches(payload, actual):
                     raise ResponseError('Readback differs from requested setting')
+            self.capabilities[control.query] = actual
+            self.query_errors[control.query] = 0
             self.broker.readings(self, control.query, actual)
             self.result(control_key, 'confirmed', 'Acknowledged and read back from inverter')
         except (OSError, ValueError, TimeoutError) as exc:
@@ -191,10 +203,20 @@ class Worker:
                 self.broker.readings(self, command, readings)
                 self.query_errors[command] = 0
                 self.query_due[command] = time.monotonic()+self.config['query_interval']
-                if command == self.protocol.rating and self.config['allow_writes'] and self.confirmed:
-                    self.controls = controls_for(self.protocol, readings, self.config['controls'], self.config['write_limits'])
+                if command in (self.protocol.rating, 'QMCHGCR', 'QMUCHGCR'):
+                    self.capabilities[command] = readings
+                if self.config['allow_writes'] and self.confirmed and self.protocol.rating in self.capabilities:
+                    self.controls = controls_for(self.protocol, self.capabilities[self.protocol.rating],
+                                                 self.config['controls'], self.config['write_limits'],
+                                                 self.capabilities, self.config.get('command_unit'),
+                                                 self.config.get('charge_current_command', 'MCHGC'))
                     self.broker.discover_controls(self)
-                    self.broker.readings(self, command, readings)
+                    # Republish rating states when a capability query creates a control.
+                    for control in self.controls.values():
+                        current = self.capabilities[self.protocol.rating].get(control.field)
+                        if current:
+                            self.broker.publish(f'inverter/{self.name}/settings/{control.key}',
+                                                control.state_value(current[0]))
             except (OSError, ValueError, TimeoutError) as exc:
                 self.query_errors[command] = self.query_errors.get(command, 0)+1
                 pause = min(900, max(self.config['query_interval'], 5)*2**min(self.query_errors[command], 6))

@@ -23,7 +23,7 @@ jobs:
           config = yaml.safe_load((root/'config.yaml').read_text())
           builds = yaml.safe_load((root/'build.yaml').read_text())
           assert set(config['arch']) == set(builds['build_from']) == {'aarch64', 'amd64'}
-          assert config['version'] == '0.2.0'
+          assert config['version'] == '0.2.1'
           assert 'mqtt:want' in config['services']
           PY
   images:

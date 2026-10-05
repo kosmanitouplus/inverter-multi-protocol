@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 from .protocols import PROTOCOLS
-from .controls import SELECTS, NUMBERS
+from .controls import SELECTS, NUMBERS, CURRENTS
 from .modbus import validate_profile
 
 
@@ -47,6 +47,8 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
         entry.setdefault('parity', 'N')
         entry.setdefault('stopbits', 1)
         entry.setdefault('allow_writes', False)
+        entry.setdefault('expose_controls', True)
+        entry.setdefault('charge_current_command', 'MCHGC')
         entry.setdefault('controls', ['output_source_priority', 'charger_source_priority', 'input_voltage_range'])
         entry.setdefault('write_limits', {})
         entry.setdefault('commands', [])
@@ -69,13 +71,19 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
         entry['baud'] = int(entry['baud'])
         if entry['baud'] not in (1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200):
             raise ValueError('Unsupported baudrate')
+        if entry.get('command_unit') is not None and (type(entry['command_unit']) is not int or not 0 <= entry['command_unit'] <= 9):
+            raise ValueError('command_unit must be 0–9')
         if not isinstance(entry['unit_id'], int) or not 1 <= entry['unit_id'] <= 247:
             raise ValueError('unit_id must be 1–247')
+        if entry['charge_current_command'] not in ('MCHGC', 'MNCHGC'):
+            raise ValueError('charge_current_command must be MCHGC or MNCHGC')
+        if not isinstance(entry['expose_controls'], bool):
+            raise ValueError('expose_controls must be boolean')
         if not isinstance(entry['allow_writes'], bool):
             raise ValueError('allow_writes must be boolean')
         if entry['allow_writes'] and protocol == 'AUTO':
             raise ValueError('Pin the exact documented protocol before enabling writes')
-        if not isinstance(entry['controls'], list) or any(k not in SELECTS.keys() | NUMBERS.keys() for k in entry['controls']):
+        if not isinstance(entry['controls'], list) or any(k not in SELECTS.keys() | NUMBERS.keys() | CURRENTS.keys() for k in entry['controls']):
             raise ValueError('Unknown control name')
         if not isinstance(entry['commands'], list) or len(entry['commands']) > 128:
             raise ValueError('commands must be a list of at most 128 read commands')

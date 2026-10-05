@@ -147,3 +147,29 @@ def test_daily_energy_entities_keep_stable_ids(tmp_path):
     b.readings(w, 'QED20261005', {'PV Energy':(12.,'kWh')})
     b.readings(w, 'QED20261006', {'PV Energy':(13.,'kWh')})
     assert [topic for topic in b.discovery if 'pv_energy' in topic] == ['homeassistant/sensor/mpp_INVERTER_1_qed_pv_energy/config']
+
+
+def test_client_interface_can_hide_controls_without_disabling_technician_mqtt(tmp_path):
+    from inverter_runtime.controls import controls_for
+    from test_controls import settings, capabilities
+    client,b,w=setup(tmp_path,allow_writes=True,expose_controls=False,
+                     controls=['max_charging_current'])
+    w.controls=controls_for(w.protocol,settings(w.protocol),w.config['controls'],{},capabilities(w.protocol))
+    b.connected.set()
+    b.discover_controls(w)
+    assert not b.discovery
+    w.enqueue('max_charging_current','40 A',time.monotonic())
+    assert not w.setting_queue.empty()
+
+
+def test_current_control_discovery_and_readback_state(tmp_path):
+    from inverter_runtime.controls import controls_for
+    from test_controls import settings, capabilities
+    client,b,w=setup(tmp_path,allow_writes=True)
+    w.controls=controls_for(w.protocol,settings(w.protocol),['max_charging_current'],{},capabilities(w.protocol))
+    w.query_topics['QMCHGCR']='inverter/INVERTER_1/availability/qmchgcr'
+    b.connected.set();b.discover_controls(w)
+    d=json.loads(b.discovery['homeassistant/select/mpp_INVERTER_1_setting_max_charging_current/config'])
+    assert '40 A' in d['options'] and len(d['availability'])==4
+    b.readings(w,'QPIRI',{'Max Charging Current':(40,'A')})
+    client.publish.assert_any_call('inverter/INVERTER_1/settings/max_charging_current','40 A',retain=False,qos=0)
