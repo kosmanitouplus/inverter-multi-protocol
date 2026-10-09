@@ -1,34 +1,73 @@
-name: "Inverter Multi-Protocol"
-description: "Multi-protocol solar inverter monitoring for Home Assistant via RS232, RS485, USB and MQTT"
-version: "0.1.5"
-slug: "inverter_multi_protocol"
-
+name: Multi Onduleur Robuste
+description: Read-only multi-inverter monitoring with autonomous serial discovery
+  and recovery
+version: 0.3.0-rc5
+stage: experimental
+slug: inverter_multi_protocol
+url: https://github.com/kosmanitouplus/inverter-multi-protocol
 arch:
-  - aarch64
-  - amd64
-  - armhf
-  - armv7
-  - i386
-
+- aarch64
+- amd64
 startup: application
 boot: auto
 init: false
-
 uart: true
+usb: true
 hassio_api: true
-
+map:
+- type: homeassistant_config
+  read_only: true
+  path: /config
 services:
-  - mqtt:need
-
-
+- mqtt:want
 options:
-  inverter_name: "INVERTER_1"
-  protocol: "PI30"
-  port: "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_FHBSb2A4517-if00-port0"
+  inverter_name: INVERTER_1
+  protocol: AUTO
+  port: AUTO
   poll_interval: 5
-
+  inverters: []
+  auto_baudrates: []
+  exclude_ports: []
 schema:
   inverter_name: str
+  inverter_id: str?
   protocol: str
   port: str
-  poll_interval: int
+  poll_interval: int(1,3600)
+  mqtt_host: str?
+  mqtt_port: int(1,65535)?
+  mqtt_user: str?
+  mqtt_password: password?
+  inverters:
+  - name: str
+    id: str?
+    port: str
+    protocol: str?
+    baud: int(50,4000000)?
+    poll_interval: float(0.2,3600)?
+    query_interval: float(0.2,3600)?
+    timeout: float(0.2,10)?
+    parity: list(N|E|O)?
+    stopbits: int(1,2)?
+    unit_id: int(1,247)?
+    command_unit: int(0,9)?
+    profile: str?
+    manufacturer: str?
+    allow_writes: bool?
+    expose_controls: bool?
+    charge_current_command: list(MCHGC|MNCHGC)?
+    controls: str?
+    write_limits: str?
+    commands: str?
+    expected_serial: str?
+    auto_baudrates:
+    - int(50,4000000)?
+    exclude_ports:
+    - str?
+  expected_serial: str?
+  auto_baudrates:
+  - int(50,4000000)?
+  exclude_ports:
+  - str?
+udev: true
+timeout: 120
