@@ -1,5 +1,12 @@
 # Changements
 
+## 0.3.0-rc3 — 9 octobre 2026 (candidate)
+
+- Première recherche courte : vitesses courantes, cadrage préféré, délai maximal de 0,4 s par requête.
+- Suppression de l’attente poll_interval entre les groupes de détection ; cadence des mesures conservée.
+- Repli sur tous les réglages avec le délai configuré pour les appareils plus lents ; backoff immédiat si le port ne peut pas être ouvert.
+- Identité et mesures retrouvent le délai normal après détection ; contrôles stricts conservés.
+
 ## 0.3.0-rc2 — 9 octobre 2026 (candidate)
 
 - Journaux AUTO : port exact, vitesse, cadrage, famille interrogée et cause du dernier échec ; diagnostic MQTT incluant le port.

@@ -425,3 +425,59 @@ def test_codec_construction_does_not_emit_info_spam(caplog):
     with caplog.at_level(logging.INFO):
         AutoDetector(config())
     assert not any('Using protocol' in record.message for record in caplog.records)
+
+
+def test_fast_pass_retries_slow_inverter_with_normal_timeout(tmp_path):
+    device = Device()
+    broker = real_broker(tmp_path)
+    attempts = []
+    def factory(port, baud=2400, timeout=3, parity='N', stopbits=1):
+        transport = SimpleNamespace(baud=baud, parity=parity, stopbits=stopbits, timeout=timeout)
+        def exchange(frame):
+            attempts.append(transport.timeout)
+            if transport.timeout < 1:
+                raise TimeoutError('Slow device needs normal timeout')
+            return device.exchange(frame, baud, parity, stopbits)
+        transport.exchange = exchange
+        return transport
+    worker = Worker(config(protocol='AUTO', timeout=3, auto_baudrates=[2400]), broker, factory)
+    for _ in range(20):
+        try:
+            worker.prepare()
+            break
+        except DetectionPending:
+            continue
+    else:
+        raise AssertionError('Slow inverter never retried')
+    assert .4 in attempts and 3 in attempts
+    assert worker.transport.timeout == 3 and worker.serial == device.serial
+
+
+def test_detection_progress_does_not_wait_for_measurement_interval(tmp_path):
+    worker = Worker(config(protocol='AUTO', poll_interval=5), real_broker(tmp_path), Device().factory)
+    stop = threading.Event()
+    starts = []
+    def poll():
+        starts.append(time.monotonic())
+        if len(starts) >= 4:
+            stop.set()
+        raise DetectionPending('Search continues')
+    worker.poll = poll
+    thread = threading.Thread(target=worker.run, args=(stop,))
+    thread.start(); thread.join(2)
+    stop.set(); thread.join(1)
+    assert len(starts) == 4
+    assert starts[-1]-starts[0] < 1
+
+
+def test_unopenable_port_backs_off_without_scanning_other_settings():
+    detector = AutoDetector(config())
+    calls = []
+    def factory(*args):
+        calls.append(args)
+        def exchange(frame):
+            raise OSError('Adapter absent')
+        return SimpleNamespace(exchange=exchange)
+    with pytest.raises(OSError, match='Adapter absent'):
+        detector.step(factory)
+    assert len(calls) == 1

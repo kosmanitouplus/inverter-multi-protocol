@@ -47,6 +47,12 @@ class Worker:
                                       parity=parity or self.config['parity'],
                                       stopbits=stopbits or self.config['stopbits'])
 
+    def make_detection_transport(self, baud, parity, stopbits):
+        transport = self.make_transport(baud, parity, stopbits)
+        if self.detector.fast_pass:
+            transport.timeout = min(self.config['timeout'], .4)
+        return transport
+
     def query_key(self, command):
         from .mqtt import key
         import re
@@ -93,8 +99,10 @@ class Worker:
             serial = None
         else:
             if selected == 'AUTO':
-                self.protocol, self.transport = self.detector.step(self.make_transport,
+                self.protocol, self.transport = self.detector.step(self.make_detection_transport,
                     should_stop=lambda: self.stop is not None and self.stop.is_set())
+                # Identification and telemetry retain the configured response timeout.
+                self.transport.timeout = self.config['timeout']
             else:
                 self.protocol = PIProtocol(selected)
                 self.protocol.identify(self.transport.exchange)
@@ -195,6 +203,8 @@ class Worker:
                         self.broker.publish(f'inverter/{self.name}/identity', self.identity, retain=True, qos=1)
                 if time.monotonic() >= max(deadline, self.next_retry):
                     started = time.monotonic()
+                    detecting = False
+                    fast_before = self.detector.fast_pass
                     try:
                         self.poll()
                         self.next_retry = 0
@@ -204,7 +214,11 @@ class Worker:
                             self.broker.unbind(self)
                         self.confirmed = False
                         self.failures += 1
-                        pause = self.config['poll_interval'] if isinstance(exc, DetectionPending) else min(60, 2**min(self.failures, 6))
+                        detecting = isinstance(exc, DetectionPending)
+                        if detecting and fast_before and not self.detector.fast_pass:
+                            LOG.info('%s [%s]: fast search finished without identification; retrying with normal response timeout',
+                                     self.slot, self.config['port'])
+                        pause = .05 if detecting else min(60, 2**min(self.failures, 6))
                         self.next_retry = time.monotonic()+pause
                         self.protocol = None
                         self.identity_status = 'unknown'
@@ -214,7 +228,8 @@ class Worker:
                         if self.failures == 1 or time.monotonic()-self.last_log >= 60:
                             LOG.warning('%s [%s]: offline/unknown (%s); retry in %ss', self.slot, self.config['port'], exc, pause)
                             self.last_log = time.monotonic()
-                    deadline = max(started+self.config['poll_interval'], time.monotonic())
+                    # Probe pacing is independent of measurement polling.
+                    deadline = time.monotonic() if detecting else max(started+self.config['poll_interval'], time.monotonic())
                 stop.wait(.1)
         finally:
             self.offline()

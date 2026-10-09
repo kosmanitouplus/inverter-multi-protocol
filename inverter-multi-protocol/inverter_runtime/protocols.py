@@ -298,6 +298,9 @@ class AutoDetector:
         self.attempts = [(rate, parity, stop, frame, candidates)
                          for rate, parity, stop in settings for frame, candidates in groups.items()]
         self.cursor = 0
+        # First try only common rates with the preferred framing and a short timeout.
+        self.fast_limit = len(common)*len(groups)
+        self.fast_pass = bool(self.fast_limit)
         self.last_success = None
         self.resume = False
         self.last_attempt = None
@@ -364,9 +367,17 @@ class AutoDetector:
                 self.resume = False
                 return result
             except (OSError, ValueError, TimeoutError) as exc:
+                # Missing/busy/unopenable hardware needs backoff, not hundreds of probes.
+                if isinstance(exc, OSError) and not isinstance(exc, TimeoutError):
+                    raise
                 self.last_error = f'{type(exc).__name__}: {str(exc)[:240]}'
+                if self.fast_pass and self.cursor >= self.fast_limit:
+                    self.fast_pass = False
+                    self.cursor = 0
+                    break
                 if self.cursor >= len(self.attempts):
                     self.cursor = 0
                     self.resume = False
+                    self.fast_pass = bool(self.fast_limit)
                     raise ResponseError(f'No protocol identified after complete serial search; {self.progress()}')
-        raise DetectionPending(f'Serial search {self.cursor}/{len(self.attempts)}; identity unknown; {self.progress()}')
+        raise DetectionPending(f'Serial search {self.cursor}/{self.fast_limit if self.fast_pass else len(self.attempts)} ({"fast" if self.fast_pass else "full"}); identity unknown; {self.progress()}')
