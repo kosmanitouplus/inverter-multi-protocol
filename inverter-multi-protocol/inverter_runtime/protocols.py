@@ -297,9 +297,14 @@ class AutoDetector:
         settings += [(rate, parity, stop) for parity, stop in framings for rate in extended]
         self.attempts = [(rate, parity, stop, frame, candidates)
                          for rate, parity, stop in settings for frame, candidates in groups.items()]
+        # Voltronic PI quick pass first, then the documented Sumry/SMG II read probe.
+        pi_fast_limit = len(common)*len(groups)
+        sumry_attempts = [(9600, 'N', 1, b'', None)] if 9600 in rates else []
+        self.attempts[pi_fast_limit:pi_fast_limit] = sumry_attempts
+        self.sumry_unit = config.get('unit_id', 1)
         self.cursor = 0
         # First try only common rates with the preferred framing and a short timeout.
-        self.fast_limit = len(common)*len(groups)
+        self.fast_limit = pi_fast_limit+len(sumry_attempts)
         self.fast_pass = bool(self.fast_limit)
         self.last_success = None
         self.resume = False
@@ -310,13 +315,21 @@ class AutoDetector:
         if self.last_attempt is None:
             return 'not started'
         rate, parity, stop, frame, candidates = self.last_attempt
-        families = '/'.join(dict.fromkeys(p.family for p, _ in candidates))
+        families = 'SUMRY_SMG_II' if candidates is None else '/'.join(dict.fromkeys(p.family for p, _ in candidates))
         return f'{rate} baud 8{parity}{stop} probe={families}; {self.last_error}'
 
     def probe(self, attempt, factory, should_stop):
         self.last_attempt = attempt
         rate, parity, stop, frame, candidates = attempt
         transport = factory(rate, parity, stop)
+        if candidates is None:
+            from .sumry import SumryProtocol
+            protocol = SumryProtocol(self.sumry_unit)
+            protocol.read(protocol.primary, transport)
+            if should_stop():
+                raise InterruptedError('Detection stopped')
+            protocol.read(protocol.primary, transport)
+            return protocol, transport
         raw = transport.exchange(frame)
         compatible = []
         responses = {}

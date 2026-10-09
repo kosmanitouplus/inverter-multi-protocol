@@ -61,14 +61,14 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
         if not isinstance(port, str) or not port or ('://' in port and not port.startswith('tcp://')):
             raise ValueError('Port must be a serial path or tcp://host:port')
         protocol = entry.get('protocol', 'AUTO').upper()
-        if protocol not in PROTOCOLS + ('AUTO', 'MODBUS_RTU', 'MODBUS_TCP'):
+        if protocol not in PROTOCOLS + ('AUTO', 'SUMRY', 'MODBUS_RTU', 'MODBUS_TCP'):
             raise ValueError(f'Unsupported protocol {protocol}')
         if protocol == 'MODBUS_TCP' and not port.startswith('tcp://'):
             raise ValueError('Modbus TCP requires a tcp:// endpoint')
         if protocol == 'MODBUS_RTU' and port.startswith('tcp://'):
             raise ValueError('Use MODBUS_TCP for Modbus over a network')
         entry['protocol'] = protocol
-        entry.setdefault('baud', 9600 if protocol.startswith('MODBUS') else 2400)
+        entry.setdefault('baud', 9600 if protocol.startswith('MODBUS') or protocol == 'SUMRY' else 2400)
         entry.setdefault('poll_interval', 5)
         entry.setdefault('query_interval', 60)
         entry.setdefault('timeout', 3)
@@ -137,6 +137,10 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
                 if protocol == 'AUTO':
                     if not any(_is_query(name, command) for name in PROTOCOLS):
                         raise ValueError('Only documented read queries are allowed')
+                elif protocol == 'SUMRY':
+                    from .sumry import SumryProtocol
+                    if command not in SumryProtocol().sensors:
+                        raise ValueError('Only documented SMG II reads are allowed')
                 else:
                     PIProtocol(protocol).definition(command)
         identity = (entry['baud'], entry['parity'], entry['stopbits'])

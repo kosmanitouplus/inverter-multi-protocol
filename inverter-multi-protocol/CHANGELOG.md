@@ -1,5 +1,13 @@
 # Changements
 
+## 0.3.0-rc4 — 9 octobre 2026 (candidate)
+
+- Ajout SUMRY / EASUN SMG II standard : Modbus RTU sur RS232, 9600 8N1, unité 1 par défaut, fonction 3 uniquement.
+- AUTO conserve le premier groupe Voltronic PI, puis teste Sumry à 9600 avant le repli complet ; SUMRY explicite évite le balayage pour le diagnostic.
+- Deux blocs de mesures validés avant compatibilité probable ; numéro ASCII vérifié pour identité et swaps, CRC/unité/fonction/longueur/plausibilité stricts.
+- Mesures réseau, sortie, batterie et capteurs PV optionnels ; aucun réglage ni séquence propriétaire de réveil.
+- Firmware standard seulement, variante EASUN SMG II 11KP à confirmer sur matériel.
+
 ## 0.3.0-rc3 — 9 octobre 2026 (candidate)
 
 - Première recherche courte : vitesses courantes, cadrage préféré, délai maximal de 0,4 s par requête.

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .config import load_config
 from .modbus import ModbusProtocol
+from .sumry import SumryProtocol
 from .mqtt import Broker, IdentityCollision
 from .protocols import PIProtocol, ResponseError, AutoDetector, DetectionPending
 from .ports import discover_ports
@@ -104,10 +105,15 @@ class Worker:
                 # Identification and telemetry retain the configured response timeout.
                 self.transport.timeout = self.config['timeout']
             else:
-                self.protocol = PIProtocol(selected)
-                self.protocol.identify(self.transport.exchange)
-                self.read(self.protocol.primary)
-                self.protocol.confidence = 'identified'
+                if selected == 'SUMRY':
+                    self.protocol = SumryProtocol(self.config['unit_id'])
+                    self.read(self.protocol.primary)
+                    self.read(self.protocol.primary)
+                else:
+                    self.protocol = PIProtocol(selected)
+                    self.protocol.identify(self.transport.exchange)
+                    self.read(self.protocol.primary)
+                    self.protocol.confidence = 'identified'
             try:
                 first = self.protocol.serial_number(self.transport.exchange)
             except (OSError, ValueError, TimeoutError):

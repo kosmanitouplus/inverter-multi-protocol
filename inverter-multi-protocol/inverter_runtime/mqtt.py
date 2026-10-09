@@ -207,7 +207,7 @@ class Broker:
         return {'identifiers': [f'mpp_{worker.name}'],
                 'name': worker.config.get('display_name', worker.slot) + (' (anonymous session)' if not worker.serial else ''),
                 'manufacturer': worker.config.get('manufacturer', 'Inverter Multi-Protocol'),
-                'model': worker.protocol.name, 'sw_version': '0.3.0-rc3',
+                'model': worker.protocol.name, 'sw_version': '0.3.0-rc4',
                 **({'serial_number': worker.serial} if worker.serial else {})}
 
     @staticmethod

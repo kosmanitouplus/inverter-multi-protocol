@@ -1,4 +1,4 @@
-# Installer 0.3.0-rc3 dans Home Assistant
+# Installer 0.3.0-rc4 dans Home Assistant
 
 Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 installée. `main` reste en 0.1.5 en attendant les essais matériels ; ne pas cliquer aveuglément sur une mise à jour venant de `main` pour tester cette version.
 
@@ -10,7 +10,7 @@ Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 i
    https://github.com/kosmanitouplus/inverter-multi-protocol#auto/read-only-recovery
    ```
 
-4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc3** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
+4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc4** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
 5. Pour tester la recherche autonome, enregistrer :
 
    ```yaml
@@ -43,3 +43,11 @@ Le premier passage utilise les huit vitesses courantes et le cadrage préféré,
 Si ce passage ne réussit pas, la recherche reprend tous les réglages avec le délai configuré (3 secondes par défaut) pour ne pas exclure les appareils lents. Ce passage exhaustif peut rester long. Les groupes ne sont plus séparés par poll_interval : ce paramètre reste la cadence des mesures après identification. Un port absent ou impossible à ouvrir déclenche le backoff.
 
 Une liste auto_baudrates vide conserve les 900 combinaisons du passage complet. Un redémarrage recommence la recherche. Les journaux montrent le port, le réglage, la phase fast/full et la cause d’échec. Choisir port AUTO pour les changements d’adaptateur.
+
+## EASUN iSolar SMG II / Sumry
+
+La famille SMG II est documentée par Solar Assistant comme Sumry (https://origin.solar-assistant.io/help/inverters/easun/ISOLAR-SMG-II-4kW-24V/rs232?locale=en). Le profil standard est documenté par https://github.com/syssi/esphome-smg-ii : Modbus RTU sur RS232, 9600 bauds, 8N1, unité 1, lectures fonction 3. La fiche Solar Assistant citée ne certifie pas le modèle 11KP de l’utilisateur ; validation réelle requise.
+
+Pour tester directement : protocol SUMRY, port by-id de l’adaptateur Prolific présent, poll_interval 5. Ce mode ne nécessite pas de fichier de profil et évite la recherche PI. Pour les tests universels garder protocol AUTO et port AUTO : Voltronic PI reste en tête du passage rapide, puis une sonde Sumry est ajoutée si 9600 figure dans les vitesses autorisées. Le passage complet contient alors 901 essais, le premier passage 41 par défaut.
+
+La carte standard retourne le bloc 201–217 et le numéro de série ASCII 186–197. La reconnaissance reste probable car le contenu des registres n’est pas une signature fabricant unique. Un numéro absent ne crée pas d’identité physique. Les firmwares utilisant d’autres registres ou un réveil propriétaire ne sont pas couverts. Aucune commande de réveil ou d’écriture n’est envoyée.

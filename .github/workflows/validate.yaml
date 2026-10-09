@@ -23,7 +23,7 @@ jobs:
           config = yaml.safe_load((root/'config.yaml').read_text())
           builds = yaml.safe_load((root/'build.yaml').read_text())
           assert set(config['arch']) == set(builds['build_from']) == {'aarch64', 'amd64'}
-          assert config['version'] == '0.3.0-rc3'
+          assert config['version'] == '0.3.0-rc4'
           assert config['options']['protocol'] == config['options']['port'] == 'AUTO'
           assert config['uart'] and config['usb'] and config['udev']
           assert config['name'] == 'Multi Onduleur Robuste'
