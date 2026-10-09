@@ -133,6 +133,7 @@ def test_process_lives_without_serial_and_broker_and_stops(tmp_path):
 def test_failed_optional_query_keeps_primary_online():
     w = Worker(config(), broker())
     w.protocol = PIProtocol('PI30'); w.commands = ['QPIGS', 'QPIRI']
+    w.plan_date = __import__('datetime').date.today()
     w.query_topics = {'QPIGS':'live', 'QPIRI':'settings'}
     w.read = Mock(side_effect=[{'Voltage':(230,'V')}, TimeoutError('unsupported')])
     w.poll()
@@ -154,7 +155,7 @@ def test_polling_is_start_to_start_without_bursts():
     assert all(.19 <= b-a < .3 for a,b in zip(starts, starts[1:]))
 
 
-def test_real_modbus_tcp_shared_gateway_and_write_readback():
+def test_real_modbus_tcp_shared_gateway_reads():
     from inverter_runtime.modbus import ModbusProtocol
     from test_modbus import Device, profile
     server = socket.socket(); server.bind(('127.0.0.1',0)); server.listen()
@@ -164,7 +165,7 @@ def test_real_modbus_tcp_shared_gateway_and_write_readback():
     errors = []
     def serve():
         try:
-            for _ in range(4):
+            for _ in range(2):
                 with server.accept()[0] as conn:
                     frame = b''
                     while len(frame) < 7 or len(frame) < 6+int.from_bytes(frame[4:6],'big'):
@@ -182,7 +183,6 @@ def test_real_modbus_tcp_shared_gateway_and_write_readback():
         second=ModbusProtocol('MODBUS_TCP',profile(),2)
         assert first.read('Voltage',transport)['Voltage'][0] == 230
         assert second.read('Voltage',transport)['Voltage'][0] == 240
-        assert first.write('Voltage','231.2',transport)['Voltage'][0] == pytest.approx(231.2)
     finally:
         thread.join(3)
         if thread.is_alive(): server.close()
@@ -239,3 +239,28 @@ def test_process_lives_with_invalid_config_then_hot_rename(tmp_path):
         assert 'Traceback' not in output
     finally:
         if proc.poll() is None:proc.kill();proc.wait()
+
+
+def test_modbus_tcp_transaction_low_byte_high_bit_is_not_rtu_exception():
+    from inverter_runtime.modbus import ModbusProtocol
+    from test_modbus import Device, profile
+    server = socket.socket(); server.bind(('127.0.0.1', 0)); server.listen()
+    port = server.getsockname()[1]
+    errors = []
+    def serve():
+        try:
+            with server.accept()[0] as conn:
+                request = conn.recv(128)
+                raw = Device(1, True).exchange(request)
+                conn.sendall(raw[:2])
+                time.sleep(.01)
+                conn.sendall(raw[2:])
+        except Exception as exc: errors.append(exc)
+        finally: server.close()
+    thread = threading.Thread(target=serve); thread.start()
+    try:
+        p = ModbusProtocol('MODBUS_TCP', profile(), 1)
+        p.transaction = 127
+        assert p.read('Voltage', Transport(f'tcp://127.0.0.1:{port}', timeout=1))['Voltage'][0] == 230
+    finally: thread.join(2)
+    assert not errors and not thread.is_alive()

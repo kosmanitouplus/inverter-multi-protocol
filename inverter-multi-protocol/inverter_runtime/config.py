@@ -5,8 +5,7 @@ import re
 import hashlib
 import unicodedata
 from pathlib import Path
-from .protocols import PROTOCOLS
-from .controls import SELECTS, NUMBERS, CURRENTS
+from .protocols import PROTOCOLS, BAUDRATES, PIProtocol
 from .modbus import validate_profile
 
 
@@ -38,12 +37,15 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
     if entries and (not isinstance(entries, list) or not 1 <= len(entries) <= 32):
         raise ValueError('Configure 1–32 inverters')
     if not entries:
-        # Preserve the installed single-inverter tag, port, protocol and history.
+        # Keep installed options; history binding additionally requires verified expected_serial.
         entries = [{'name': options.get('inverter_name', 'INVERTER_1'),
                     'id': options.get('inverter_id'),
-                    'port': options.get('port', '/dev/ttyUSB0'),
-                    'protocol': options.get('protocol', 'PI30'),
-                    'poll_interval': options.get('poll_interval', 5)}]
+                    'port': options.get('port', 'AUTO'),
+                    'protocol': options.get('protocol', 'AUTO'),
+                    'poll_interval': options.get('poll_interval', 5),
+                    'expected_serial': options.get('expected_serial'),
+                    'auto_baudrates': options.get('auto_baudrates', []),
+                    'exclude_ports': options.get('exclude_ports', [])}]
     result, names, ports = [], set(), {}
     for original in entries:
         if not isinstance(original, dict):
@@ -96,7 +98,7 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
         if entry['parity'] not in ('N', 'E', 'O') or entry['stopbits'] not in (1, 2):
             raise ValueError('Invalid serial framing')
         entry['baud'] = int(entry['baud'])
-        if entry['baud'] not in (1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200):
+        if entry['baud'] not in BAUDRATES:
             raise ValueError('Unsupported baudrate')
         if entry.get('command_unit') is not None and (type(entry['command_unit']) is not int or not 0 <= entry['command_unit'] <= 9):
             raise ValueError('command_unit must be 0–9')
@@ -108,15 +110,41 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
             raise ValueError('expose_controls must be boolean')
         if not isinstance(entry['allow_writes'], bool):
             raise ValueError('allow_writes must be boolean')
-        if entry['allow_writes'] and protocol == 'AUTO':
-            raise ValueError('Pin the exact documented protocol before enabling writes')
-        if not isinstance(entry['controls'], list) or any(k not in SELECTS.keys() | NUMBERS.keys() | CURRENTS.keys() for k in entry['controls']):
+        if entry['allow_writes']:
+            raise ValueError('This version is read-only: allow_writes must be false')
+        entry['expose_controls'] = False
+        if port.upper() == 'AUTO' and protocol != 'AUTO':
+            raise ValueError('Automatic port discovery requires protocol AUTO')
+        if not isinstance(entry['controls'], list) or any(not isinstance(k, str) for k in entry['controls']):
             raise ValueError('Unknown control name')
         if not isinstance(entry['commands'], list) or len(entry['commands']) > 128:
             raise ValueError('commands must be a list of at most 128 read commands')
+        expected = entry.get('expected_serial')
+        if expected is not None and (not isinstance(expected, str) or not re.fullmatch(r'[A-Za-z0-9-]{6,32}', expected)):
+            raise ValueError('expected_serial must be a manufacturer serial number')
+        if expected and (port.upper() == 'AUTO' or protocol.startswith('MODBUS')):
+            raise ValueError('History migration requires an explicit PI port and verified serial')
+        rates = entry.setdefault('auto_baudrates', [])
+        if not isinstance(rates, list) or any(type(v) is not int or v not in BAUDRATES for v in rates):
+            raise ValueError('auto_baudrates must be standard positive baud rates')
+        exclusions = entry.setdefault('exclude_ports', [])
+        if not isinstance(exclusions, list) or any(not isinstance(v, str) or not v.startswith('/dev/') for v in exclusions):
+            raise ValueError('exclude_ports must be serial device paths')
+        if not protocol.startswith('MODBUS'):
+            for command in entry['commands']:
+                if not isinstance(command, str):
+                    raise ValueError('Commands must be text')
+                if protocol == 'AUTO':
+                    if not any(_is_query(name, command) for name in PROTOCOLS):
+                        raise ValueError('Only documented read queries are allowed')
+                else:
+                    PIProtocol(protocol).definition(command)
         identity = (entry['baud'], entry['parity'], entry['stopbits'])
         physical = port if port.startswith('tcp://') else os.path.realpath(port)
         previous = ports.get(physical)
+        if port.upper() == 'AUTO':
+            if previous:
+                raise ValueError('Use only one AUTO port pool; it handles all discovered ports')
         if previous:
             if not protocol.startswith('MODBUS') or not previous[1].startswith('MODBUS') or previous[0] != identity:
                 raise ValueError('Sharing a physical port requires Modbus units with identical serial settings')
@@ -134,3 +162,11 @@ def load_config(path, profiles_dir='/config/inverter-profiles'):
     if not 1 <= len(result) <= 32:
         raise ValueError('Configure 1–32 inverters')
     return options, result
+
+
+def _is_query(name, command):
+    try:
+        PIProtocol(name).definition(command)
+        return True
+    except ValueError:
+        return False

@@ -24,6 +24,7 @@ class Transport:
         self.lock = port_lock(port)
 
     def exchange(self, request, expected=None, hid=False):
+        self.lock = port_lock(self.port)
         if not self.lock.acquire(timeout=self.timeout):
             raise TimeoutError('Shared port is busy')
         try:
@@ -37,7 +38,7 @@ class Transport:
                 return self._hid(request)
             # Open on each exchange so USB re-enumeration replaces stale handles.
             with serial.Serial(self.port, self.baud, timeout=.1, write_timeout=self.timeout,
-                               parity=self.parity, stopbits=self.stopbits) as conn:
+                               parity=self.parity, stopbits=self.stopbits, exclusive=True) as conn:
                 conn.reset_input_buffer()
                 conn.write(request)
                 return self._read(conn.read, expected)
@@ -61,7 +62,7 @@ class Transport:
                     expected = 6 + int.from_bytes(data[4:6], 'big')
                     if expected < 9 or expected > 260:
                         raise ValueError('Invalid Modbus TCP length')
-                elif expected is not None and len(data) >= 2 and data[1] & 128:
+                elif expected is not None and not isinstance(getattr(read, '__self__', None), socket.socket) and len(data) >= 2 and data[1] & 128:
                     expected = 5
                 if expected is not None and len(data) >= expected:
                     return bytes(data)

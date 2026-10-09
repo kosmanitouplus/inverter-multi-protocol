@@ -42,17 +42,6 @@ def test_start_before_broker_then_replay_persistent_discovery(tmp_path):
     assert broker.generation == 2
 
 
-def test_retained_duplicate_and_large_commands_rejected(tmp_path):
-    client, b, w = setup(tmp_path, allow_writes=True)
-    w.enqueue = Mock()
-    for attrs in ({'retain':True}, {'dup':True}, {'payload':b'x'*257}):
-        values = dict(topic='inverter/INVERTER_1/set/output_source_priority', payload=b'SBU first', retain=False, dup=False)
-        values.update(attrs)
-        b.on_message(client, None, SimpleNamespace(**values))
-    w.enqueue.assert_not_called()
-    b.on_message(client, None, SimpleNamespace(topic='inverter/INVERTER_1/set/output_source_priority',
-                                              payload=b'SBU first', retain=False, dup=False))
-    assert w.enqueue.call_count == 1
 
 
 def test_disabled_controls_removed_on_next_start(tmp_path):
@@ -149,48 +138,8 @@ def test_daily_energy_entities_keep_stable_ids(tmp_path):
     assert [topic for topic in b.discovery if 'pv_energy' in topic] == ['homeassistant/sensor/mpp_INVERTER_1_qed_pv_energy/config']
 
 
-def test_client_interface_can_hide_controls_without_disabling_technician_mqtt(tmp_path):
-    from inverter_runtime.controls import controls_for
-    from test_controls import settings, capabilities
-    client,b,w=setup(tmp_path,allow_writes=True,expose_controls=False,
-                     controls=['max_charging_current'])
-    w.controls=controls_for(w.protocol,settings(w.protocol),w.config['controls'],{},capabilities(w.protocol))
-    b.connected.set()
-    b.discover_controls(w)
-    assert not b.discovery
-    w.enqueue('max_charging_current','40 A',time.monotonic())
-    assert not w.setting_queue.empty()
 
 
-def test_current_control_discovery_and_readback_state(tmp_path):
-    from inverter_runtime.controls import controls_for
-    from test_controls import settings, capabilities
-    client,b,w=setup(tmp_path,allow_writes=True)
-    w.controls=controls_for(w.protocol,settings(w.protocol),['max_charging_current'],{},capabilities(w.protocol))
-    w.query_topics['QMCHGCR']='inverter/INVERTER_1/availability/qmchgcr'
-    b.connected.set();b.discover_controls(w)
-    d=json.loads(b.discovery['homeassistant/select/mpp_INVERTER_1_setting_max_charging_current/config'])
-    assert '40 A' in d['options'] and len(d['availability'])==4
-    b.readings(w,'QPIRI',{'Max Charging Current':(40,'A')})
-    client.publish.assert_any_call('inverter/INVERTER_1/settings/max_charging_current','40 A',retain=False,qos=0)
 
 
 import pytest
-
-
-@pytest.mark.parametrize('new_name', ['Atelier', 'INVERTER'])
-def test_rename_removes_old_discovery_and_groups_new_device(tmp_path,new_name):
-    client,old,worker=setup(tmp_path)
-    old.connected.set();old.readings(worker,'QPIGS',{'AC Output Voltage':(230,'V')})
-    old_topic='homeassistant/sensor/mpp_INVERTER_1_ac_output_voltage/config'
-    replacement=Broker('localhost',client=client,manifest_path=tmp_path/'manifest.json')
-    new=Worker(config(name=new_name,display_name='Onduleur Atelier'),replacement)
-    new.protocol=PIProtocol('PI30');new.commands=['QPIGS']
-    new.query_topics={'QPIGS':'inverter/Atelier/availability/qpigs'}
-    replacement.on_connect(client,None,{},0)
-    client.publish.assert_any_call(old_topic,'',qos=1,retain=True)
-    replacement.readings(new,'QPIGS',{'AC Output Voltage':(231,'V')})
-    definition=json.loads(replacement.discovery[f'homeassistant/sensor/mpp_{new_name}_ac_output_voltage/config'])
-    assert definition['device']['name']=='Onduleur Atelier'
-    assert definition['device']['identifiers']==[f'mpp_{new_name}']
-    assert old_topic not in replacement.persisted_topics

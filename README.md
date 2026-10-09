@@ -1,116 +1,99 @@
-# Multi Onduleur Robuste
+# Multi Onduleur Robuste — 0.3.0-rc1
 
-Version actuelle : **0.2.3**.
+Add-on Home Assistant pour mini-PC **amd64/x86_64** et Raspberry Pi **aarch64**, MQTT et lecture seule.
+Cette version candidate part de la branche **0.2.3**, pas du code 0.1.5 de `main`. La fusion stable attend les essais sur les appareils réels.
 
-Surveillance et réglages d’onduleurs dans MQTT/Home Assistant. Plusieurs appareils sont regroupés séparément, avec une disponibilité propre à chacun et à chaque requête. Cette version nécessite encore une validation sur le matériel avant fusion et mise à jour de l’installation active.
+## Démarrage AUTO
 
-## Compatibilité réelle
+```yaml
+inverter_name: INVERTER_1
+protocol: AUTO
+port: AUTO
+poll_interval: 5
+inverters: []
+auto_baudrates: []
+exclude_ports: []
+```
 
-- RS232 via adaptateur USB et USB HID (`/dev/hidraw…`) : codecs PI16, PI17, PI17INFINI, PI17M058, PI18, PI18SV, PI18LVX, PI30, PI30MAX, PI30REVO, PI30M044, PI30M045, PI30MST et PI41.
-- Réseau : mêmes familles via une passerelle série TCP transparente (`tcp://adresse:port`), ou Modbus TCP avec un profil propre au modèle.
-- RS485 via adaptateur USB : Modbus RTU, avec adresse de chaque onduleur et profil de registres documenté. Le verrou partagé protège les transactions des appareils d’un même bus.
-- `AUTO` : recherche en lecture seule des familles PI16/17/18/30/41, avec réponse d’identification **et** réponse de mesures vérifiées. Les variantes qui retournent la même identification nécessitent une sélection explicite. AUTO ne recherche pas aveuglément des registres Modbus et ne permet jamais d’écrire.
+Le service inventorie les ports toutes les 2 secondes. Chaque port a son propre travailleur : retirer un adaptateur USB ou débrancher le câble côté onduleur ne termine pas le service et ne bloque pas les autres ports. En mode `port: AUTO`, un nouvel adaptateur est trouvé automatiquement. Avec un chemin explicite, le service attend ce chemin : passer à AUTO pour accepter un adaptateur différent.
 
-Il n’existe pas de protocole universel. Ces codecs ne constituent pas une validation de tous les modèles commerciaux. Les interfaces propriétaires, CAN, les API cloud, SunSpec et VE.Direct ne sont pas implémentées dans cette version. Aucun profil de marque Modbus n’est inventé : il faut le manuel de registres exact avant de l’ajouter.
+Les premières vitesses essayées sont 2400, 9600, 19200, 4800, 1200, 38400, 57600 et 115200 bauds. La recherche s'étend ensuite aux autres vitesses positives standard de pyserial jusqu'à 4 000 000 bauds, avec parité N/E/O et 1/2 bits d'arrêt, 8 bits de données. Les réglages non supportés par le pilote sont rejetés. **Une recherche exhaustive peut être longue** ; `auto_baudrates: [2400, 9600]` permet de la limiter aux vitesses documentées pour les appareils d'une installation. Il ne s'agit pas des fréquences électriques 50/60 Hz de l'onduleur : celles-ci ne sont jamais modifiées.
 
-## Configuration
+Deux tentatives de cadrage d'identification au maximum sont commencées par cycle de recherche. Chaque échange a un timeout borné ; les réponses de statut identiques sont réutilisées pour examiner plusieurs codecs. Les échecs de communication déclenchent un backoff de 2 à 60 secondes ; une recherche en cours reprend progressivement. Pas de rafales pour rattraper des cycles manqués : `poll_interval` est un minimum entre débuts de cycles, et les échanges lents peuvent espacer davantage les mesures.
 
-La configuration existante `inverter_name`, `port`, `protocol`, `poll_interval` reste utilisée si `inverters` est vide. Les valeurs principales gardent leurs anciens IDs et topics `homeassistant/sensor/mpp_<nom>_<champ>/state` (ou `binary_sensor`). Conserver exactement le nom de l’onduleur et son protocole évite de changer ces identifiants.
+## Protocoles et ports
 
-Pour plusieurs onduleurs, remplir la liste :
+| Support | Comportement |
+|---|---|
+| PI16, PI17, PI17INFINI, PI17M058 | Framing de lecture issu de mpp-solar 0.16.56 ; identification et statut stricts |
+| PI18, PI18SV, PI18LVX | Idem ; les unités 0.1V/0.1Hz sont normalisées |
+| PI30, PI30MAX, PI30REVO, PI30M044, PI30M045, PI30MST, PI41 | Idem ; aucune variante n'est affirmée sur la seule réponse QPI |
+| MODBUS_RTU, MODBUS_TCP | Fonctions de lecture 3/4 uniquement ; profil de registres documenté obligatoire, configuré explicitement |
+| `/dev/serial/by-id/*`, `/dev/serial/by-path/*` | Prioritaires, alias dédupliqués par chemin physique |
+| Ports inventoriés par pyserial et ttyUSB, ttyACM, ttyXRUSB, ttyAMA, ttySC, ttyTHS, rfcomm | Recherche AUTO ; exclusion possible pour les ports utilisés par d'autres services |
+| UART intégré, RS232, RS485 | Transport série selon le pilote et le câblage ; un UART connecté à la console système doit être exclu |
+| `/dev/hidrawN` | USB HID pris en charge via chemin **explicite** ; pas de sondage automatique de claviers/périphériques HID inconnus |
+| `tcp://hôte:port` | Passerelle série ou Modbus TCP, adresse explicite ; pas de balayage réseau |
+
+Les vitesses de recherche sont des **candidats de communication**, pas une certification de chaque couple matériel/protocole. Les paramètres conseillés doivent venir du manuel du modèle ; la documentation mpp-solar donne 2400 bauds comme défaut général. RS485 décrit une liaison électrique, pas la carte de registres. CAN, Bluetooth natif, API cloud et tous les protocoles propriétaires du marché ne sont pas implémentés. Aucun équivalent universel à toute la couverture SolarAssistant n'est revendiqué.
+
+En cas de variantes compatibles partageant la même identification, le statut est `probable` et seules les mesures décodées de façon identique par les candidats sont publiées. Une seule interprétation strictement validée donne `identified`. Aucune réponse fiable donne `unknown`, sans mesures. CRC/checksum, cadrage, longueur annoncée, nombre de champs, nombres, flags, enums et plausibilité sont contrôlés. Les placeholders documentés signifient une mesure absente, jamais zéro.
+
+## Identité et historique
+
+Un port ou le numéro de série USB de l'adaptateur **n'est pas** une identité d'onduleur.
+
+Un numéro de série constructeur utilisable doit être relu deux fois pendant l'identification. Il est revérifié avant et après les lectures. Les IDs MQTT stables sont dérivés de la famille et de ce numéro, indépendamment du port et de l'adaptateur. Une correspondance persistante est stockée dans `/data/inverter-discovery.json`. Deux ports déclarant le même numéro rendent l'identité ambiguë : leurs mesures sont refusées jusqu'à résolution.
+
+**Migration volontaire de l'historique 0.2.3** : après avoir vérifié le numéro réel, conserver l'ancien `inverter_id` (ou `id`) et renseigner `expected_serial` avec un port explicite. Seul cet appareil peut alors recevoir les anciens IDs. Cela évite de rattacher arbitrairement le premier onduleur branché à un historique existant. La correspondance persiste ensuite et peut être retrouvée en AUTO. Le fichier manifeste doit être conservé/copier lors d'un changement d'installation de l'add-on.
+
+```yaml
+inverter_name: Onduleur Atelier
+inverter_id: INVERTER_1
+protocol: AUTO
+port: /dev/serial/by-id/usb-votre-adaptateur
+expected_serial: "9293333010501"  # remplacer par le numéro réellement vérifié
+poll_interval: 5
+inverters: []
+```
+
+Sans numéro exploitable (ou avec un profil Modbus sans identité), l'appareil reste une **session anonyme** explicitement affichée. Une reconnexion après perte de communication crée une nouvelle session ; les anciennes découvertes anonymes sont retirées. Ce jeton n'est pas présenté comme une identité matérielle. **Deux appareils anonymes échangés sans aucune interruption observable ne peuvent pas être distingués avec certitude.** Le logiciel ne prétend pas le contraire et ne garantit pas leur historique physique. Un numéro constructeur cloné sur deux appareils successifs est aussi indétectable sans autre preuve indépendante.
+
+## Plusieurs ports / appareils
+
+Un seul pool `port: AUTO` gère jusqu'à 32 ports découverts. Les ports déclarés explicitement sont exclus du pool. Exemple mixte :
 
 ```yaml
 inverters:
-  - name: INVERTER_1
-    port: /dev/serial/by-id/usb-mon-adaptateur
-    protocol: PI30
-    baud: 2400
-    poll_interval: 5
-    query_interval: 60
-    timeout: 3
-    allow_writes: false
-  - name: INVERTER_2
-    port: tcp://192.168.1.60:8899
+  - name: Recherche automatique
+    port: AUTO
     protocol: AUTO
-    timeout: 3
+    poll_interval: 5
+    auto_baudrates: [2400, 9600, 19200]
+    exclude_ports: [/dev/serial/by-id/usb-port-utilise-par-une-autre-application]
+  - name: Onduleur Modbus
+    port: /dev/serial/by-id/usb-rs485
+    protocol: MODBUS_RTU
+    baud: 9600
+    parity: N
+    stopbits: 1
+    unit_id: 1
+    profile: modele_documente
+    poll_interval: 5
 ```
 
-Utiliser les chemins `/dev/serial/by-id/…` pour retrouver l’adaptateur après reconnexion. Les appareils PI ne peuvent pas partager le même port. Jusqu’à 32 entrées sont acceptées ; le débit physique d’un bus partagé limite leur cadence réelle.
+Le profil doit exister dans `/config/inverter-profiles/modele_documente.json`, avec les adresses, fonctions 3/4, types, ordre des mots/octets, échelles et unités **du manuel du modèle**. Ne pas utiliser un exemple comme une carte universelle. Plusieurs unités Modbus peuvent partager un bus si leurs réglages série sont identiques ; les transactions sont verrouillées.
 
-Les mesures principales sont interrogées à la cadence demandée (début à début, sans rafale après un retard). Les autres requêtes de lecture connues sont réparties progressivement. Une requête optionnelle non supportée devient indisponible et bénéficie d’un backoff, sans couper les mesures principales. Les requêtes nécessitant un paramètre non déductible du protocole peuvent être ajoutées via `commands`, chaîne séparée par des virgules ; seules les requêtes de lecture reconnues sont acceptées. Les lectures d’énergie datées sont actualisées au changement de date ; leurs entités gardent des identifiants stables.
+## MQTT et sécurité
 
-## Toutes les valeurs disponibles dans MQTT
+Découverte retenue, disponibilité globale et par appareil/requête, Last Will offline. Au retour du broker ou après redémarrage du processus, les découvertes sont rejouées et les disponibilités restent offline jusqu'à des mesures nouvelles. Le message de naissance Home Assistant relance aussi la découverte. Les états de mesure ne sont pas retenus. Les anciens appareils avec identité vérifiée restent archivés offline pour conserver leur historique.
 
-Les champs décodés des requêtes qui réussissent produisent automatiquement leurs entités Home Assistant, regroupées sous un appareil par onduleur. Les champs des requêtes supplémentaires ont un préfixe de requête pour ne pas écraser les mesures principales. Les données textuelles, états, firmware et avertissements sont également publiés lorsqu’ils sont décodables.
+Aucune commande de réglage n'est disponible, aucun abonnement MQTT aux setters. `allow_writes: true` est refusé même avec un protocole explicite ; les anciens champs de contrôle restent acceptés pour migration lorsqu'ils sont désactivés. Les anciennes découvertes select/number présentes dans le manifeste sont retirées. Ne lancer qu'un lecteur par liaison physique.
 
-- `inverter/<nom>/state` : toutes les dernières réponses, leur horodatage, valeurs et unités ; vérifier disponibilité et horodatage avant d’utiliser une valeur conservée.
-- `inverter/<nom>/availability` : disponibilité de l’appareil.
-- `inverter/<nom>/availability/<requête>` : disponibilité de la requête.
-- `inverter/<nom>/identity` et `diagnostics` : identification et capacités découvertes.
-- `inverter_multi_protocol/availability` : disponibilité globale, avec testament MQTT.
+Le conteneur garde AppArmor et le mode protégé ; accès UART/USB/udev, configuration Home Assistant en lecture seule, sans `full_access`, Docker API ni privilèges supplémentaires. Les identifiants MQTT ne sont pas journalisés. Aucun fichier ou dépôt BatMon n'est modifié.
 
-La découverte Home Assistant est retenue, rejouée après reconnexion et après le message de naissance Home Assistant. Les mesures ne sont pas retenues. Une reconnexion MQTT remet les disponibilités à offline avant de nouveaux échanges. Le manifeste local `/data/inverter-discovery.json` permet de retirer les contrôles précédemment publiés lorsqu’ils sont désactivés.
+## Installation et validation
 
-## Réglages modifiables
+Voir [mise à jour Home Assistant](docs/MISE_A_JOUR_FR.md), [essais matériels avant fusion](docs/VALIDATION_FR.md), [recherche SolarAssistant et sources](docs/RECHERCHE_SOLARASSISTANT_FR.md) et [changelog](inverter-multi-protocol/CHANGELOG.md).
 
-Lecture seule par défaut. `allow_writes: true` exige un protocole explicite, l’identification correspondante et des mesures récentes. Pour PI30 et variantes compatibles, les sélecteurs sont proposés seulement si le champ de lecture et la commande correspondante existent :
-
-- `output_source_priority`
-- `charger_source_priority`
-- `input_voltage_range`
-- `battery_type` (activation explicite)
-- `max_charging_current` : courant maximal de charge total, choix annoncés par QMCHGCR
-- `max_ac_charging_current` : courant maximal de charge secteur, choix annoncés par QMUCHGCR
-
-Les limites de tension sont configurées par le technicien **pour chaque onduleur**, sans valeur imposée pour une installation 12/24/48 V. Les limites de tension ne sont jamais devinées. Les contrôles numériques suivants nécessitent leurs limites autorisées par le fabricant : `battery_bulk_charge_voltage`, `battery_float_charge_voltage`, `battery_recharge_voltage`, `battery_redischarge_voltage`, `battery_cutoff_voltage`. Exemple de structure **à remplacer par les limites exactes du modèle** :
-
-```yaml
-allow_writes: true
-controls: "output_source_priority,input_voltage_range"
-# Pour une tension autorisée, ajouter le nom du contrôle à controls puis :
-# write_limits: '{"battery_float_charge_voltage":{"min":MINIMUM,"max":MAXIMUM,"step":0.1}}'
-```
-
-Pour les courants PI30, le format par défaut MCHGC/MUCHGC utilise un numéro de machine et deux chiffres de courant (0–99 A). Le format étendu de courant total `charge_current_command: MNCHGC` permet trois chiffres lorsque le manuel du modèle le confirme. La liste effectivement offerte reste limitée aux choix annoncés par l’appareil, éventuellement filtrés par `write_limits`. En parallèle, renseigner `command_unit: 0` à `9` selon l’adresse confirmée ; aucune adresse n’est déduite. En mode « single machine output » confirmé, le numéro 0 est utilisé. Le nombre d’appareils/configurations n’est pas une limite de courant.
-
-Chaque contrôle apparaît sous le même appareil Home Assistant. Sa commande va à `inverter/<nom>/set/<contrôle>`, son état à `inverter/<nom>/settings/<contrôle>`. `command_result` donne `confirmed`, `rejected` ou `unconfirmed`.
-
-Pas d’API de commandes brutes. Une commande retenue, dupliquée, ancienne, hors limites ou provenant d’une ancienne connexion MQTT est rejetée. La réussite exige accusé de réception **et relecture du réglage**. Aucun nouvel essai automatique après une commande d’écriture, même si son accusé est perdu. Un résultat `unconfirmed` signifie que la valeur peut avoir changé : vérifier l’onduleur avant toute autre action. Les autres familles PI restent en lecture seule jusqu’à ajout de mappings documentés. PI41 et certaines variantes rapportant PI30 peuvent rester sans réglages si leur identification n’est pas confirmée.
-
-## Profils Modbus
-
-Placer `<profil>.json` dans `/config/inverter-profiles/`, utiliser `protocol: MODBUS_RTU` ou `MODBUS_TCP`, `profile: <profil>`, `unit_id: 1` (1–247), `baud`, `parity: N|E|O`, `stopbits: 1|2`.
-
-Exemple de **structure fictive**, pas un registre réel à tester :
-
-```json
-{"sensors":[{"name":"AC Voltage","address":100,"function":3,"data_type":"uint16","scale":0.1,"unit":"V"}]}
-```
-
-Les adresses sont des offsets de protocole, pas les numéros 40001 des manuels. Types : uint/int 16/32/64, float32/64 ; `word_order`, `byte_order` big/little ; `scale` et `offset`. Fonctions de lecture 3/4 uniquement. Une écriture nécessite un champ `write` avec `function` 6/16 et `min`, `max`, `step`, ainsi que `allow_writes: true`. Aucun registre n’est writable sans ce mapping explicite. Plusieurs unités sur un bus doivent avoir le même débit et cadrage. L’identité Modbus repose sur le profil et l’adresse configurés, pas sur une reconnaissance automatique du fabricant.
-
-## Pannes, arrêt et construction
-
-Absence/retrait du câble : processus vivant, appareil offline, retries 2–60 s, nouvelles ouvertures du port. Un onduleur en panne ne fait pas tomber les autres. L’absence ou la reconnexion MQTT est gérée indépendamment. Les échanges et attentes de verrou sont bornés ; SIGTERM/SIGINT arrête les travailleurs et publie offline.
-
-Images natives aarch64 et amd64, base Alpine Home Assistant 3.22, dépendances Python épinglées, environnement virtuel sans chemin contenant une version mineure Python. armhf/armv7/i386 sont retirés. Pas de modification ni de déploiement automatique sur le Raspberry.
-
-Voir [audit et validation matérielle](docs/VALIDATION_FR.md). Sources de formats : [mpp-solar](https://github.com/jblance/mpp-solar), [spécification Modbus](https://www.modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf), [découverte MQTT Home Assistant](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
-
-## Installations clients et accès technicien
-
-Voir [configuration technicien](docs/TECHNICIEN_FR.md) pour activer des contrôles par appareil et réserver les commandes aux techniciens. `expose_controls: false` supprime leur découverte Home Assistant, mais conserve leur API MQTT pour le technicien. Cette option masque les contrôles ; elle ne constitue pas une autorisation par utilisateur. Le broker doit appliquer des ACL empêchant les comptes clients et la connexion MQTT Home Assistant de publier sur `inverter/+/set/+`, et permettre cette publication uniquement au compte technicien. Le compte de l’add-on doit pouvoir s’abonner à ces commandes et publier les états/résultats. Ne pas donner aux clients les droits d’administration permettant de changer ces règles.
-
-## Nom permanent et mises à jour Home Assistant
-
-Le nom affiché est **Multi Onduleur Robuste**. Le slug `inverter_multi_protocol`, le dépôt GitHub, les identifiants des onduleurs et les topics MQTT restent stables. Le nom affiché ne définit pas l’identité d’installation : celle-ci dépend du dépôt configuré et du slug. Les prochaines publications augmentent le numéro de version sans ajouter de suffixe TEST ni créer une nouvelle application.
-
-Installer une fois l’application du dépôt `https://github.com/kosmanitouplus/inverter-multi-protocol#robustness/protocol-detection-mqtt-controls`, puis activer **Mise à jour automatique** dans son onglet Informations. Garder cette même adresse de dépôt, branche incluse, pour conserver l’identité de l’installation. Home Assistant recherche les versions publiées et peut les installer automatiquement selon son calendrier et ses règles de mises à jour. Ce réglage est une préférence Supervisor sur le Raspberry ; un commit GitHub ne l’active pas à distance. Les copies `local_...` TEST ne sont pas rattachées à ce dépôt et nécessitent une migration initiale unique.
-
-## Noms lisibles et erreurs de configuration
-
-Les noms d’onduleur acceptent les espaces et accents. Leur identifiant MQTT est dérivé de manière déterministe (`Onduleur Étage 1` devient `Onduleur_Etage_1`). Tous les anciens noms valides tels que `INVERTER_1` gardent exactement leurs IDs/topics. Le nom affiché et l’identifiant peuvent être dissociés : une entrée `inverters` accepte `id: INVERTER_1` avec `name: Onduleur Étage 1` pour changer le libellé sans changer l’historique. En configuration simple, utiliser `inverter_id` pour fixer cet identifiant. Les IDs doivent rester uniques ; une collision nécessite un id explicite.
-
-Une configuration invalide est journalisée sans traceback ni sortie du service. Le processus attend une correction et relit les options toutes les deux secondes ; il ne communique avec aucun onduleur tant que la configuration globale n’est pas valide. SIGTERM reste pris en charge pendant cette attente. L’application conserve toujours le nom **Multi Onduleur Robuste**.
-
-Changer `inverter_name` (configuration simple) ou `name` dans une entrée `inverters` (configuration multiple), puis enregistrer. Le service détecte la modification sous deux secondes, termine ses échanges en cours, puis relance les lecteurs avec la nouvelle configuration. Sans id explicite, un nouveau nom donnant un nouvel identifiant crée un nouvel appareil MQTT ; les anciennes déclarations de découverte gérées par l’application sont retirées à la reconnexion MQTT. Avec un id explicite inchangé, seul le libellé du même appareil change, et son historique est conservé. Une différence de nom qui donne le même identifiant normalisé (par exemple un espace remplacé par un underscore) change uniquement le libellé. Les modifications hors application et les anciennes découvertes non enregistrées dans son manifeste ne sont pas supprimées automatiquement.
+Tests : `python -m pytest tests -q` avec les dépendances épinglées et pytest 8.3.5. La CI exécute les simulations Linux et construit les images nativement sur amd64 et aarch64. Les tests de codecs utilisent des fixtures upstream et des trames synthétiques explicitement cohérentes ; ils ne constituent pas une certification des modèles réels.

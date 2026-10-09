@@ -65,3 +65,28 @@ def test_non_ascii_only_names_have_deterministic_ids(tmp_path):
     name='逆变器'
     assert inverter_identity(name)==inverter_identity(name)
     assert inverter_identity(name).startswith('inverter_')
+
+
+@pytest.mark.parametrize('protocol', ['PI30', 'AUTO', 'MODBUS_RTU'])
+def test_all_protocols_reject_legacy_write_enable(tmp_path, protocol):
+    e = dict(name='one', port='/dev/one', protocol=protocol, allow_writes=True)
+    with pytest.raises(ValueError, match='read-only'):
+        load(tmp_path, {'inverters':[e]})
+
+
+def test_defaults_start_autonomous_usb_inventory(tmp_path):
+    _, entries = load(tmp_path, {})
+    assert entries[0]['port'] == entries[0]['protocol'] == 'AUTO'
+
+
+def test_only_one_auto_pool(tmp_path):
+    with pytest.raises(ValueError, match='one AUTO'):
+        load(tmp_path, {'inverters':[dict(name=n, port='AUTO') for n in ('one', 'two')]})
+
+
+@pytest.mark.parametrize('extra', [dict(auto_baudrates=[0]), dict(auto_baudrates=['9600']),
+                                  dict(exclude_ports=['/etc/passwd']), dict(commands=['POP00']),
+                                  dict(expected_serial='ABC')])
+def test_extended_options_are_validated_before_wire_use(tmp_path, extra):
+    with pytest.raises(ValueError):
+        load(tmp_path, {'inverters':[dict(name='one',port='/dev/one',**extra)]})

@@ -49,12 +49,10 @@ def test_write_bounds_ack_and_readback(tcp, function):
     protocol = ModbusProtocol('MODBUS_TCP' if tcp else 'MODBUS_RTU',
                              profile(write=dict(min=200, max=250, step=.1, function=function)), 2)
     device = Device(2, tcp)
-    assert protocol.write('Voltage', '231.2', device)['Voltage'][0] == pytest.approx(231.2)
-    assert len(device.requests) == 2
-    for invalid in ('nan', '251', '231.25'):
-        with pytest.raises(ValueError):
-            protocol.write('Voltage', invalid, device)
-    assert len(device.requests) == 2
+    with pytest.raises(ValueError, match='read-only'):
+        protocol.write('Voltage', '231.2', device)
+    assert not device.requests
+
 
 
 @pytest.mark.parametrize('tcp', [False, True])

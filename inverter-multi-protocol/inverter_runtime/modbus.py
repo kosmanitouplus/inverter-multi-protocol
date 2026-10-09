@@ -72,6 +72,8 @@ class ModbusProtocol:
         self.sensors = {s['name']: s for s in profile['sensors']}
 
     def _exchange(self, pdu, transport, count):
+        if pdu[0] not in (3, 4):
+            raise ValueError('Only read functions are permitted')
         if self.name == 'MODBUS_TCP':
             self.transaction = (self.transaction + 1) & 65535
             header = struct.pack('>HHHB', self.transaction, 0, len(pdu)+1, self.unit)
@@ -116,37 +118,7 @@ class ModbusProtocol:
         return {command: (value, sensor.get('unit', ''))}
 
     def write(self, command, value, transport):
-        sensor = self.sensors[command]
-        limits = sensor.get('write')
-        if not limits:
-            raise ValueError('Register is read-only')
-        from .controls import checked_number
-        value = checked_number(value, limits)
-        fmt, count = FORMATS[sensor.get('data_type', 'uint16')]
-        raw = (Decimal(str(value))-Decimal(str(sensor.get('offset', 0)))) / Decimal(str(sensor.get('scale', 1)))
-        if fmt not in ('f', 'd'):
-            if raw != raw.to_integral_value():
-                raise ValueError('Value cannot be represented by this register scale')
-            raw = int(raw)
-        else:
-            raw = float(raw)
-        try:
-            data = self._reorder(struct.pack('>'+fmt, raw), sensor)
-        except (struct.error, OverflowError):
-            raise ValueError('Value cannot be represented by this register type') from None
-        function = limits.get('function', 6)
-        if function == 6:
-            pdu = struct.pack('>BH', 6, sensor['address']) + data
-        else:
-            pdu = struct.pack('>BHHB', 16, sensor['address'], count, len(data)) + data
-        body = self._exchange(pdu, transport, 1)  # write acknowledgements are 5-byte PDUs
-        wanted = pdu if function == 6 else struct.pack('>BHH', 16, sensor['address'], count)
-        if body != wanted:
-            raise ValueError('Modbus write acknowledgement mismatch; outcome unknown')
-        actual = self.read(command, transport)
-        if not math.isclose(actual[command][0], value, abs_tol=limits['step']/100, rel_tol=1e-6):
-            raise ValueError('Modbus write readback differs from requested value')
-        return actual
+        raise ValueError('Registers are read-only in this runtime')
 
     def read_commands(self):
         return list(self.sensors)
