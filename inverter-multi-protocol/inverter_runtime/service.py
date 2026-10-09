@@ -209,10 +209,10 @@ class Worker:
                         self.protocol = None
                         self.identity_status = 'unknown'
                         self.broker.publish(f'inverter/slots/{self.slot}/diagnostics',
-                                            {'status': 'unknown', 'online': False, 'reason': str(exc)},
+                                            {'status': 'unknown', 'online': False, 'port': self.config['port'], 'reason': str(exc)},
                                             retain=True, qos=1)
                         if self.failures == 1 or time.monotonic()-self.last_log >= 60:
-                            LOG.warning('%s: offline/unknown (%s); retry in %ss', self.slot, exc, pause)
+                            LOG.warning('%s [%s]: offline/unknown (%s); retry in %ss', self.slot, self.config['port'], exc, pause)
                             self.last_log = time.monotonic()
                     deadline = max(started+self.config['poll_interval'], time.monotonic())
                 stop.wait(.1)

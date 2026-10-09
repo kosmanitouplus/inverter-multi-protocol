@@ -406,3 +406,22 @@ def test_duplicate_serial_claim_clears_when_explicit_port_disconnects(tmp_path):
         first.poll()
         assert first.online and thread.is_alive()
     finally: stop.set(); thread.join(2)
+
+
+def test_auto_diagnostics_distinguish_timeout_and_rejected_response():
+    detector = AutoDetector(config(auto_baudrates=[2400]))
+    def silent(*args):
+        def exchange(frame):
+            raise TimeoutError('Inverter response timeout')
+        return SimpleNamespace(exchange=exchange)
+    with pytest.raises(DetectionPending, match=r'2400 baud 8N1 probe=PI18.*TimeoutError'):
+        detector.step(silent)
+    with pytest.raises(DetectionPending, match='Response received but rejected'):
+        detector.step(lambda *args: SimpleNamespace(exchange=lambda frame: b'garbage\r'))
+
+
+def test_codec_construction_does_not_emit_info_spam(caplog):
+    import logging
+    with caplog.at_level(logging.INFO):
+        AutoDetector(config())
+    assert not any('Using protocol' in record.message for record in caplog.records)

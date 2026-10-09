@@ -1,6 +1,7 @@
 """Isolated mpp-solar codecs. Automatic probes never use a setter."""
 import copy
 import importlib
+import logging
 import math
 import re
 import sys
@@ -28,6 +29,9 @@ def load_codec(name):
     if name not in PROTOCOLS:
         raise ValueError(f'Unsupported protocol: {name}')
     with _LOCK:
+        # Upstream uses bare module logger names rather than a package hierarchy.
+        for logger_name in ('mppsolar', 'protocols', 'AbstractProtocol', *[n.lower() for n in PROTOCOLS]):
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
         module = importlib.import_module('mppsolar.protocols.' + name.lower())
         # Upstream constructors mutate shared module command tables, including
         # parent tables. Restore their originals and detach each instance.
@@ -296,8 +300,18 @@ class AutoDetector:
         self.cursor = 0
         self.last_success = None
         self.resume = False
+        self.last_attempt = None
+        self.last_error = 'no attempt yet'
+
+    def progress(self):
+        if self.last_attempt is None:
+            return 'not started'
+        rate, parity, stop, frame, candidates = self.last_attempt
+        families = '/'.join(dict.fromkeys(p.family for p, _ in candidates))
+        return f'{rate} baud 8{parity}{stop} probe={families}; {self.last_error}'
 
     def probe(self, attempt, factory, should_stop):
+        self.last_attempt = attempt
         rate, parity, stop, frame, candidates = attempt
         transport = factory(rate, parity, stop)
         raw = transport.exchange(frame)
@@ -320,10 +334,11 @@ class AutoDetector:
                 status = p.validate_status(p.codec.get_responses(responses[request]), p.definition(p.primary))
                 p.decode(responses[request], p.primary)
                 compatible.append((p, status))
-            except (OSError, ValueError, TimeoutError):
+            except (OSError, ValueError, TimeoutError) as exc:
+                self.last_error = f'{type(exc).__name__}: {str(exc)[:160]}'
                 continue
         if not compatible:
-            raise ResponseError('No compatible protocol at this serial setting')
+            raise ResponseError(f'Response received but rejected: {self.last_error}')
         p = compatible[0][0]
         p.confidence = 'identified' if len(compatible) == 1 else 'probable'
         p.candidates = [item.name for item, values in compatible]
@@ -348,9 +363,10 @@ class AutoDetector:
                 self.last_success = attempt
                 self.resume = False
                 return result
-            except (OSError, ValueError, TimeoutError):
+            except (OSError, ValueError, TimeoutError) as exc:
+                self.last_error = f'{type(exc).__name__}: {str(exc)[:240]}'
                 if self.cursor >= len(self.attempts):
                     self.cursor = 0
                     self.resume = False
-                    raise ResponseError('No protocol identified after complete serial search')
-        raise DetectionPending(f'Serial search {self.cursor}/{len(self.attempts)}; identity unknown')
+                    raise ResponseError(f'No protocol identified after complete serial search; {self.progress()}')
+        raise DetectionPending(f'Serial search {self.cursor}/{len(self.attempts)}; identity unknown; {self.progress()}')

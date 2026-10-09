@@ -1,5 +1,11 @@
 # Changements
 
+## 0.3.0-rc2 — 9 octobre 2026 (candidate)
+
+- Journaux AUTO : port exact, vitesse, cadrage, famille interrogée et cause du dernier échec ; diagnostic MQTT incluant le port.
+- Suppression des annonces répétitives de construction des 14 codecs.
+- Recherche et validations strictes inchangées ; une liste auto_baudrates vide explore les 900 combinaisons, et un redémarrage recommence la recherche.
+
 ## 0.3.0-rc1 — 9 octobre 2026 (candidate, validation matérielle requise)
 
 - Mode AUTO autonome : inventaire hotplug multiports, alias by-id/by-path dédupliqués, changement d'adaptateur et ports ttyXRUSB/UART additionnels.

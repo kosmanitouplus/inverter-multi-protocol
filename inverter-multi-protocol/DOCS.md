@@ -1,4 +1,4 @@
-# Installer 0.3.0-rc1 dans Home Assistant
+# Installer 0.3.0-rc2 dans Home Assistant
 
 Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 installée. `main` reste en 0.1.5 en attendant les essais matériels ; ne pas cliquer aveuglément sur une mise à jour venant de `main` pour tester cette version.
 
@@ -10,7 +10,7 @@ Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 i
    https://github.com/kosmanitouplus/inverter-multi-protocol#auto/read-only-recovery
    ```
 
-4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc1** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
+4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc2** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
 5. Pour tester la recherche autonome, enregistrer :
 
    ```yaml
@@ -35,3 +35,9 @@ Si l'add-on est une installation **locale** plutôt qu'un dépôt GitHub, rempla
 Après validation et fusion, la branche `main` recevra la version stable. Une installation utilisant déjà le dépôt `main` pourra alors actualiser la boutique et utiliser **Mettre à jour**. Conserver les données et les options ; les entrées manuelles restent acceptées. Le passage d'une installation de branche à `main` est une migration d'installation, pas une garantie de transfert automatique de `/data`.
 
 Voir aussi le README du dépôt et docs/VALIDATION_FR.md pour les paramètres et essais matériels.
+
+## Comprendre une recherche AUTO
+
+Une liste `auto_baudrates` vide lance toutes les vitesses standard prévues : 900 combinaisons de vitesse, cadrage et requête. La recherche progresse par petits groupes et recommence à zéro après un redémarrage de l’add-on. Laisser fonctionner sans redémarrage pendant le diagnostic. Les journaux périodiques montrent le port réel, le dernier réglage et la cause : délai sans réponse, ouverture du port impossible ou réponse rejetée. Le chargement d’un codec ne signifie pas qu’un onduleur a été reconnu.
+
+Pour un essai limité aux vitesses habituelles, utiliser `auto_baudrates: [2400, 9600, 19200, 4800, 1200, 38400, 57600, 115200]`. Cette restriction réduit la recherche mais peut exclure un appareil utilisant une autre vitesse. Conserver le port by-id affiché lorsque cet adaptateur est celui à tester ; choisir le port `auto` pour rechercher aussi un adaptateur de remplacement.
