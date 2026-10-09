@@ -1,5 +1,13 @@
 # Changements
 
+## 0.3.0-rc5 — 9 octobre 2026 (candidate)
+
+- Sélection de la carte Sumry SMG II 8/11 kW lorsque le registre 184 retourne un protocole 3–6 ; profil standard conservé sinon.
+- Lecture des tensions L1 à 338/346, batterie à 277–280 ; valeurs 0 en sortie acceptées lorsque réseau ou batterie valide, même en défaut.
+- Carte vérifiée avant chaque bloc principal, compatibilité probable et vérification série conservées ; fonction 3 uniquement.
+- PV2 limité aux protocoles 3/4, fréquence et bitmaps défaut/avertissement optionnels documentés.
+- Diagnostic du bloc rejeté incluant carte, protocole, mode et tensions ; tests des quatre variantes et changement de protocole.
+
 ## 0.3.0-rc4 — 9 octobre 2026 (candidate)
 
 - Ajout SUMRY / EASUN SMG II standard : Modbus RTU sur RS232, 9600 8N1, unité 1 par défaut, fonction 3 uniquement.

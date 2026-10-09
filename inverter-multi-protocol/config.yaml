@@ -1,7 +1,7 @@
 name: Multi Onduleur Robuste
 description: Read-only multi-inverter monitoring with autonomous serial discovery
   and recovery
-version: 0.3.0-rc4
+version: 0.3.0-rc5
 stage: experimental
 slug: inverter_multi_protocol
 url: https://github.com/kosmanitouplus/inverter-multi-protocol

@@ -71,7 +71,7 @@ def test_voltronic_first_then_sumry_auto():
     else: raise AssertionError('Sumry not detected')
     assert p.name == 'SUMRY' and transport.baud == 9600
     modbus_frames = [f for f in d.frames if len(f) == 8 and f[1] == 3]
-    assert len(modbus_frames) == 2
+    assert len(modbus_frames) == 3
 
 
 def test_sumry_recovery_and_identity_swap(tmp_path):
@@ -135,3 +135,58 @@ def test_manual_sumry_config_defaults_and_setter_rejection(tmp_path):
     values['inverters'] = [dict(name='test', port='/dev/test', protocol='SUMRY', commands=['SET'])]
     path.write_text(json.dumps(values))
     with pytest.raises(ValueError, match='documented'): load_config(path)
+
+
+class ExtendedDevice(Device):
+    def __init__(self, number=4):
+        super().__init__()
+        self.number = number
+        self.mode = 6  # Communicating with a fault and no output remains valid telemetry.
+    def exchange(self, frame, expected=None):
+        if not self.usb or not self.cable:
+            return super().exchange(frame, expected)
+        if len(frame) != 8 or frame[1] != 3:
+            raise TimeoutError('Not a Modbus read')
+        address, count = struct.unpack('>HH', frame[2:6])
+        if address == 184: data = self.number.to_bytes(2, 'big')
+        elif address == 201 and count == 1: data = self.mode.to_bytes(2, 'big')
+        elif address == 201: data = b'\0'*(count*2)  # Old map looked empty.
+        elif address == 338:
+            data = struct.pack('>16H', 2280, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        elif address == 277: data = struct.pack('>HhhH', 0, 0, 0, 0)
+        else: return super().exchange(frame, expected)
+        self.frames.append(frame)
+        assert frame[0] == 1 and crc16(frame[:-2]) == frame[-2:]
+        assert len(data) == 2*count
+        raw = bytes((1, 3, len(data)))+data
+        return raw+crc16(raw)
+
+
+@pytest.mark.parametrize('number', [3, 4, 5, 6])
+def test_extended_11kw_fault_with_grid_and_zero_output_is_readable(number):
+    d, p = ExtendedDevice(number), SumryProtocol()
+    values = p.read('STATUS', d)
+    assert values['Grid voltage'] == (228., 'V')
+    assert values['Output voltage'] == (0., 'V')
+    assert values['Operation mode'] == (6, '')
+    assert p.family == 'SUMRY_SMG_II_8_11KW'
+    assert p.candidates == [f'SMG_II_8_11KW_P{number}']
+    assert p.confidence == 'probable'
+    assert all(f[1] == 3 for f in d.frames)
+    assert ('PV2 voltage' in p.sensors) == (number in (3, 4))
+
+
+def test_extended_worker_identity_and_map_changes(tmp_path):
+    d = ExtendedDevice()
+    w = Worker(config(protocol='SUMRY', baud=9600, unit_id=1), real_broker(tmp_path), d.factory)
+    w.poll()
+    assert w.online and w.serial == d.serial
+    d.number = 6
+    with pytest.raises(ValueError, match='protocol number changed'):
+        w.poll()
+
+
+def test_unrecognized_protocol_number_never_guesses_extended_map():
+    d = ExtendedDevice(7)
+    with pytest.raises(ValueError, match='unconvincing'):
+        SumryProtocol().read('STATUS', d)

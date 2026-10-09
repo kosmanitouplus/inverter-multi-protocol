@@ -128,6 +128,9 @@ class Worker:
             raise ResponseError('Connected serial does not match expected_serial; no history binding')
         self.bind_identity(serial)
         self.update_plan()
+        if isinstance(self.protocol, SumryProtocol):
+            LOG.info('%s: Sumry register map %s, protocol184=%s; read-only',
+                     self.slot, self.protocol.family, self.protocol.protocol_number)
         LOG.info('%s: %s at %s/%s/%s, %s, identity=%s; read-only', self.slot, self.protocol.name,
                  self.transport.baud, self.transport.parity, self.transport.stopbits,
                  self.identity_status, serial or 'anonymous session')

@@ -1,4 +1,4 @@
-# Installer 0.3.0-rc4 dans Home Assistant
+# Installer 0.3.0-rc5 dans Home Assistant
 
 Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 installée. `main` reste en 0.1.5 en attendant les essais matériels ; ne pas cliquer aveuglément sur une mise à jour venant de `main` pour tester cette version.
 
@@ -10,7 +10,7 @@ Cette version candidate est sur **auto/read-only-recovery**, issue de la 0.2.3 i
    https://github.com/kosmanitouplus/inverter-multi-protocol#auto/read-only-recovery
    ```
 
-4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc4** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
+4. Actualiser la boutique et installer **Multi Onduleur Robuste** en version **0.3.0-rc5** depuis ce dépôt de branche. Le nom et le slug restent identiques ; Home Assistant peut néanmoins traiter une autre URL de branche comme un dépôt/installateur distinct. Ce n'est pas une mise à jour automatique en place de l'autre branche.
 5. Pour tester la recherche autonome, enregistrer :
 
    ```yaml
@@ -51,3 +51,9 @@ La famille SMG II est documentée par Solar Assistant comme Sumry (https://origi
 Pour tester directement : protocol SUMRY, port by-id de l’adaptateur Prolific présent, poll_interval 5. Ce mode ne nécessite pas de fichier de profil et évite la recherche PI. Pour les tests universels garder protocol AUTO et port AUTO : Voltronic PI reste en tête du passage rapide, puis une sonde Sumry est ajoutée si 9600 figure dans les vitesses autorisées. Le passage complet contient alors 901 essais, le premier passage 41 par défaut.
 
 La carte standard retourne le bloc 201–217 et le numéro de série ASCII 186–197. La reconnaissance reste probable car le contenu des registres n’est pas une signature fabricant unique. Un numéro absent ne crée pas d’identité physique. Les firmwares utilisant d’autres registres ou un réveil propriétaire ne sont pas couverts. Aucune commande de réveil ou d’écriture n’est envoyée.
+
+### Variante SMG II 8/11 kW
+
+Source : https://github.com/alcestide/easun-smg-ii-11kw (table des registres et configuration RS232). Le registre 184 indiquant 3, 4, 5 ou 6 sélectionne la carte 8/11 kW. Les tensions réseau/sortie L1 sont à 338/346, la batterie à 277–280 ; elles ne sont pas aux adresses du bloc standard 201–217. Le registre de protocole est revérifié avant chaque lecture principale. Aucun autre numéro ne fait deviner cette carte.
+
+Garder protocol SUMRY et le port Prolific pour l’essai direct après mise à jour. Le journal annoncera la carte choisie et le numéro retourné. Comparer la tension réseau à la photo (228 V), puis la batterie et la sortie. Une sortie à 0 V ou un mode défaut n’empêche pas la disponibilité des mesures lorsque des données cohérentes sont présentes. Les bitmaps ne sont pas une traduction automatique du code LCD 46 ; son sens exact n’est pas confirmé.
